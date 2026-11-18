@@ -232,6 +232,10 @@ CAPABILITIES: dict[str, dict] = {
             "work_history": "synthetic: Work Experience entries added from a template (D149)",
             "education": "synthetic: Education entries added from a template (D163)",
             "websites": "synthetic: Websites entries added from your profile's links (D166)",
+            "certifications": (
+                "synthetic: Certifications entries added from your approved licences and "
+                "certifications (D167)"
+            ),
             "left_empty": "synthetic: Languages and Skills left empty when optional (D165)",
         },
         "unsupported": [

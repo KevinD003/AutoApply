@@ -37,6 +37,10 @@ text; From and To typed as MM/YYYY.
 D166: the stand-in's Websites entries (FIXTURE ASSUMPTION FA11) the same way, from a frozen websites
 section (your profile's links, each the web address resolution wrote, `structured_sections`):
 entry i's one control, a web address box, is named `web[i].url`, and is typed.
+D167: the stand-in's Certifications entries (FIXTURE ASSUMPTION FA12) the same way, from a frozen
+certifications section (your approved licences and certifications, `structured_sections`): entry
+i's controls are named `cert[i].<part>`; Certification typed, Issued Date and Expiration Date typed
+as MM/YYYY when the row holds them, and the Certification Number box always left empty.
 Nothing here maps, guesses or infers a value: it only enters what resolution established."""
 
 import re
@@ -87,6 +91,16 @@ _EDUCATION_FIELDS = (
 )
 # D166: a frozen websites field -> how it is entered, and the part of the control's name.
 _WEBSITE_FIELDS = (("url", "text", "url"),)
+# D167: a frozen certifications field -> how it is entered, and the part of the control's name.
+_CERT_FIELDS = (
+    ("name", "text", "name"),
+    ("issued_on", "month_year", "issued"),
+    ("expires_on", "month_year", "expires"),
+)
+# The part an entry asks that NoEfforts never fills (it holds no number): a part the section never
+# asks (`parts`, refused for any kind but employment), so its box is always left empty and read
+# back empty.
+_CERT_NEVER = (("number", "text", "number"),)
 
 
 @dataclass(frozen=True)
@@ -107,6 +121,9 @@ KINDS = {
     "employment": EntryKind("employment", "work", _FIELDS, _PART_FIELDS, "title", "work history"),
     "education": EntryKind("education", "edu", _EDUCATION_FIELDS, (), "school", "education"),
     "websites": EntryKind("websites", "web", _WEBSITE_FIELDS, (), "url", "websites"),  # D166
+    "certifications": EntryKind(  # D167
+        "certifications", "cert", _CERT_FIELDS, _CERT_NEVER, "name", "licences and certifications"
+    ),
 }
 _ADD = re.compile(r"\s*add(?:\s+another)?\s*", re.IGNORECASE)  # read whole (fullmatch)
 
@@ -166,8 +183,8 @@ def _op(i: int, field: str, kind: str, selector: str, fr, limit: int | None = No
 
 def plan(data: object) -> SectionPlan:
     """The entries to make from a frozen section (validated first, as on Greenhouse), or Refused:
-    an employment, (D163) an education or (D166) a websites section only, every field resolved or
-    intentionally omitted."""
+    an employment, (D163) an education, (D166) a websites or (D167) a certifications section only,
+    every field resolved or intentionally omitted."""
     section = section_from_content(data)  # refuses malformed or unknown content
     k = entry_kind(section.kind)
     if not section.ready():

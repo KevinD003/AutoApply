@@ -129,10 +129,12 @@ def _record_routes(
     def _after_commit(db: Session, user: User) -> None:
         # D140: an education or employment record is what a structured section (D120) sends;
         # an approval of the old value is retired now, not only at the next read or a gate.
-        if entity in ("education", "employment"):
+        if entity in ("education", "employment", "credential"):
             from app.modules.preparation import package as pk
 
-            pk.retire_after_section_record(db, user.id, entity)
+            # D167: a licence or certification is what a certifications section sends.
+            kind = "certifications" if entity == "credential" else entity
+            pk.retire_after_section_record(db, user.id, kind)
 
     def _get_owned(db: Session, user: User, item_id: uuid.UUID):
         obj = db.get(model, item_id)

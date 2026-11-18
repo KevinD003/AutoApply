@@ -129,8 +129,9 @@ def test_beside_the_education_section_both_read_as_before():
 
 
 def test_a_section_of_a_kind_no_reader_takes_is_still_the_work_history_checkpoint():
+    # D167: "certifications" is read since (its own section): a kind no reader takes.
     html = stand_in("other_sections").replace('data-wd-section="skills"',
-                                              'data-wd-section="certifications"')  # fmt: skip
+                                              'data-wd-section="volunteering"')  # fmt: skip
     got = fields_of(html)
     assert workday.WORK_KEY in got and "skills_section" not in got
     assert left_empty(got["languages_section"], "Languages")

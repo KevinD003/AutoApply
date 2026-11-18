@@ -34,13 +34,23 @@ Deliberately OUT OF SCOPE here (the isolated remaining gaps, not guessed):
 D166: a websites section (the Workday-style stand-in's Websites, FIXTURE ASSUMPTION FA11), whose
 rows are your approved profile's links, one each (`resolve_website_rows`): each the web address
 a Websites entry's box is given, or a checkpoint for a link that is not one.
+
+D167: a certifications section (the Workday-style stand-in's Certifications, FIXTURE ASSUMPTION
+FA12), whose rows are your approved licences and certifications that have not expired on the day
+the package is built (C16/D69's rule, `current`), newest issued first, undated last, then by record
+(`resolve_certification_row`): each one's name as written and its issued and expiration dates as
+MM/YYYY where the record holds them, never a number. A name a form box cannot hold, an issued date
+after the expiration date, or a year of fewer than four digits (here and in `_date_field`) is yours
+to fix, naming the record.
 """
 
 import hashlib
 import re
 from collections import Counter
 from dataclasses import dataclass, field
+from datetime import date
 
+from app.core.db import utcnow
 from app.modules.preparation.forms import (
     ENTRY_PARTS,
     LIMITED_FIELDS,
@@ -128,13 +138,13 @@ class FieldResult:
 @dataclass
 class RowResult:
     record_id: str
-    record_type: str  # "education" | "employment" | (D166) "websites"
+    record_type: str  # "education" | "employment" | (D166) "websites" | (D167) "credential"
     fields: dict  # field name -> FieldResult
 
 
 @dataclass
 class SectionResult:
-    kind: str  # "education" | "employment" | (D166) "websites"
+    kind: str  # "education" | "employment" | (D166) "websites" | (D167) "certifications"
     rows: list  # list[RowResult]
     supported: bool = True
     reason: str = ""  # when not supported
@@ -323,6 +333,12 @@ def _date_field(name: str, record, record_type, attr, *, required: bool) -> Fiel
             "needs_user",
             explanation=f"No {attr.replace('_', ' ')} on this record (month and year are needed).",
         )
+    if d.year < 1000:  # D167 review: a form is given MM/YYYY, which such a year never is
+        return FieldResult(
+            name, "needs_user",
+            explanation=f"This record's {attr.replace('_', ' ')} ({d.isoformat()}) has a year of "
+            "fewer than four digits; fix it in your profile.",
+        )  # fmt: skip
     return FieldResult(
         name,
         "resolved",
@@ -611,7 +627,90 @@ def resolve_website_rows(profile) -> list[RowResult]:
 
 # -- section reconciliation ------------------------------------------------------------------
 
-SUPPORTED_KINDS = ("education", "employment", "websites")
+# -- D167: licences and certifications, from your approved credentials --------------------------
+
+# What a Certifications entry's typed boxes are given (FA12): the credential's name as written (a
+# text box holds one line), and its issued and expiration dates as MM/YYYY. NoEfforts holds no
+# certification number: the entry's box for it is never a field here, and is left empty. D167
+# review: an expired one is never sent (`current`: as C16/D69 leaves it out of drafts and job
+# fit, and as your profile says, "not used"), and every message names the credential.
+_BAD_CERT_DATES = (
+    "{name}: its issued date ({issued}) is after its expiration date ({expires}); fix it in your "
+    "profile."
+)
+_CERT_DATE_LABELS = {"issued_on": "issued date", "expires_on": "expiration date"}
+
+
+def _named(record) -> str:
+    """A credential as a message names it: the first line of its name, at most 80 characters."""
+    lines = (getattr(record, "name", None) or "").strip().splitlines()
+    return f"“{lines[0][:80]}”" if lines else "A licence or certification with no name"
+
+
+def current(record, today: date) -> bool:
+    """D167 review (C16/D69's rule): not expired: no expiration date, or one today or later."""
+    expires = getattr(record, "expires_on", None)
+    return expires is None or expires >= today
+
+
+def _cert_name(record) -> FieldResult:
+    text = getattr(record, "name", None)
+    if not text or not text.strip():
+        return FieldResult(
+            "name", "needs_user",
+            explanation="A licence or certification has no name; fix it in your profile.",
+        )  # fmt: skip
+    if "\n" in text or "\r" in text:
+        return FieldResult(
+            "name", "needs_user",
+            explanation=f"{_named(record)} has a line break in its name, which a form cannot "
+            "hold; fix it in your profile.",
+        )  # fmt: skip
+    return FieldResult(
+        "name", "resolved", value={"text": text}, display=text, source="profile_fact",
+        explanation="From your record's name.",
+        fact_refs=[_ref(record, "credential", "name", text)],
+    )  # fmt: skip
+
+
+def _cert_date(name: str, record) -> FieldResult:
+    label = _CERT_DATE_LABELS[name]
+    d = getattr(record, name, None)
+    if d is None:
+        return FieldResult(name, "omitted", explanation=f"No {label} on this record: none is sent.")
+    if d.year < 1000:  # review: a form is given MM/YYYY, which such a year never is
+        return FieldResult(
+            name, "needs_user",
+            explanation=f"{_named(record)}: its {label} ({d.isoformat()}) has a year of fewer "
+            "than four digits; fix it in your profile.",
+        )  # fmt: skip
+    return FieldResult(
+        name, "resolved", value=_date_hash(d), display=f"{d.month:02d}/{d.year}",
+        source="deterministic_mapping", explanation=f"From your record's {label}.",
+        fact_refs=[_ref(record, "credential", name, d.isoformat())],
+    )  # fmt: skip
+
+
+def resolve_certification_row(record) -> RowResult:
+    """D167: one approved, current licence or certification as a Certifications entry (FA12): its
+    name as written, and its issued and expiration dates, each only when the record holds it
+    (none: not sent, never guessed). An issued date after the expiration date is yours to fix."""
+    fields = {
+        "name": _cert_name(record),
+        "issued_on": _cert_date("issued_on", record),
+        "expires_on": _cert_date("expires_on", record),
+    }
+    issued, expires = getattr(record, "issued_on", None), getattr(record, "expires_on", None)
+    if _bad_date_order(issued, expires):
+        why = _BAD_CERT_DATES.format(
+            name=_named(record), issued=issued.isoformat(), expires=expires.isoformat()
+        )
+        for k in ("issued_on", "expires_on"):
+            fields[k] = FieldResult(k, "needs_user", explanation=why)
+    return RowResult(str(record.id), "credential", fields)
+
+
+SUPPORTED_KINDS = ("education", "employment", "websites", "certifications")
 
 
 def resolve_section(
@@ -623,11 +722,13 @@ def resolve_section(
     required_parts: tuple = (),
     limits: dict | None = None,
     choices: dict | None = None,
+    today: date | None = None,
 ) -> SectionResult:
     """Resolve one structured section from the owner's approved records, in record order. An
     unsupported section kind, or an education section with no option lists to match against,
     is returned as an explicit checkpoint (`supported=False`) rather than guessed. D164:
-    `choices`, your choices for this application (education only)."""
+    `choices`, your choices for this application (education only). D167 review: `today`, the
+    day an expired licence or certification is left out from (the day the package is built)."""
     if kind not in SUPPORTED_KINDS:
         return SectionResult(kind, [], supported=False, reason=f"Unsupported section '{kind}'.")
     limits = dict(limits or {})
@@ -638,6 +739,11 @@ def resolve_section(
     approved = [r for r in records if _approved(r)]
     if kind == "websites":  # D166: your approved profile's links
         return SectionResult(kind, [row for p in approved for row in resolve_website_rows(p)])
+    if kind == "certifications":  # D167: your approved licences and certifications, current ones
+        day = today or utcnow().date()
+        return SectionResult(
+            kind, [resolve_certification_row(r) for r in approved if current(r, day)]
+        )
     if kind == "education":
         if options is None:
             return SectionResult(
