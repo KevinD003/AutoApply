@@ -1061,6 +1061,29 @@ def test_d170_a_job_ruled_out_while_its_post_is_read_is_declined_after_the_read(
     assert made == []
 
 
+def test_d170_a_job_closed_while_its_post_is_read_is_declined_after_the_read(
+    api, receiver, monkeypatch
+):
+    # The job's own state as it is now: closed by the owner while the rule reads its post.
+    from app.modules.applications.models import Application
+
+    pilot_on()
+    synthetic_candidate(api)
+    job = v2_job(api)
+    real = service._capture
+
+    def read_while_the_owner_closes_it(db, user, j):
+        done = real(db, user, j)
+        assert api.patch(f"/jobs/{job}", json={"status": "closed"}).status_code == 200
+        return done
+
+    monkeypatch.setattr(service, "_capture", read_while_the_owner_closes_it)
+    assert tick() == 0 and events(job) == [("skipped", "job_signal")]
+    with SessionLocal() as db:
+        made = db.scalars(select(Application).where(Application.job_id == uuid.UUID(job))).all()
+    assert made == []
+
+
 def test_d170_a_pause_waits_for_the_rule_while_automatic_applying_is_stopped(
     api, receiver, monkeypatch
 ):
@@ -1102,10 +1125,14 @@ def test_d170_a_read_needs_the_permission_as_it_is_now(api, receiver, monkeypatc
         return "not_authorized" if tuple(actions) == ("read",) else real(user, actions)
 
     monkeypatch.setattr(live, "refusal", refusal)
+    other_role = {"url": f"{BASE}/gh2/{BOARD}/jobs/5020003", "title": "Clinic Coordinator",
+                  "employer": "Northwind Example (fictional)"}  # fmt: skip
+    newer = api.post("/jobs", json=other_role).json()["job"]["id"]  # a new job: read first
     reads = requests_made(receiver)
     assert tick() == 0
     never_read_or_tried(receiver, app_id, reads)
     assert ("skipped", "capture_failed") not in events(job)
+    assert events(newer) == []  # neither read nor noted as a failed read
 
 
 def test_d170_the_tasks_time_limit_stops_the_rule_at_once(api, receiver, monkeypatch):
