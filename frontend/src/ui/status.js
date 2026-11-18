@@ -101,6 +101,8 @@ export function applicationStatus(a) {
     else label = "Submitted (not confirmed)";
   } else if (a.state === "failed_terminal" && a.last_attempt?.state === "rejected") {
     label = "Form rejected";
+  } else if (a.state === "needs_user_action" && a.rule === "continues") {
+    label = "Automatic applying continues it"; // D170: paused on a changed form, the rule goes on with it
   } else {
     label = STATE_LABEL[a.state] ?? a.state;
   }
@@ -109,6 +111,7 @@ export function applicationStatus(a) {
   if (a.submission === "receipt") tone = "positive";
   else if (a.submission === "user_claimed") tone = "brand";
   else if (a.state.startsWith("failed") || a.state === "cancelled" || a.state === "expired") tone = "danger";
+  else if (a.state === "needs_user_action" && a.rule === "continues") tone = "brand";
   else if (
     a.state === "needs_user_action" ||
     a.state === "awaiting_approval" ||
@@ -133,6 +136,8 @@ export function journeyStage(a) {
     case "awaiting_approval":
       return { key: "review", label: "Ready for your review", tone: "caution" };
     case "needs_user_action":
+      // D170: paused on a changed form, the account's standing rule continues it by itself.
+      if (a.rule === "continues") return { key: "in_progress", label: "Automatic applying continues it", tone: "brand" };
       return { key: "needs_you", label: "Needs your action", tone: "caution" };
     case "queued":
     case "running":

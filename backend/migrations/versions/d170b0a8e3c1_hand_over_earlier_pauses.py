@@ -41,12 +41,15 @@ def upgrade() -> None:
 
 def hand_over() -> None:
     """One `skipped: form_changed` event for each application with a pause and none yet, under
-    the application's own account."""
+    the application's own account, dated when it last paused (when D132 left it to its owner), so
+    it takes its place in the account's history rather than heading it."""
     op.execute(
         sa.text(
             "INSERT INTO auto_apply_events "
             "(id, user_id, job_id, application_id, action, reason, created_at) "
-            "SELECT gen_random_uuid(), a.user_id, a.job_id, a.id, 'skipped', 'form_changed', now() "
+            "SELECT gen_random_uuid(), a.user_id, a.job_id, a.id, 'skipped', 'form_changed', "
+            "(SELECT max(p.created_at) FROM application_pauses p "
+            "WHERE p.application_id = a.id AND p.user_id = a.user_id) "
             "FROM applications a "
             "WHERE EXISTS (SELECT 1 FROM application_pauses p "
             "WHERE p.application_id = a.id AND p.user_id = a.user_id) "

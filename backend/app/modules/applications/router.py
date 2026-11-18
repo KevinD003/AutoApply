@@ -164,6 +164,9 @@ class AppOut(BaseModel):
     # who entered it; null otherwise (D53)
     submission: Basis | None = None
     reached_submission: bool = False
+    # D170: what the account's standing rule does with an application paused on a changed form
+    # (autoapply `verdict`: continues, waits or yours); null without such a pause.
+    rule: str | None = None
 
 
 class AppDetail(AppOut):
@@ -220,6 +223,17 @@ def _last_attempt(db: Session, app: Application) -> dict | None:
     return {"state": att.state, "approval_scope": scope}
 
 
+def _rule(db: Session, app: Application) -> str | None:
+    """D170: the standing rule's verdict on the application's form-change pause, if it has one."""
+    from app.modules.autoapply.service import verdict
+    from app.modules.preparation.package import unresolved_pause
+
+    pause = unresolved_pause(db, app.id)
+    if pause is None or pause.kind != "form_changed":
+        return None
+    return verdict(db, db.get(User, app.user_id), app)[0]
+
+
 def _out(db: Session, app: Application, detail: bool = False):
     job = db.get(Job, app.job_id)
     receipt, entered, by_user = submission_facts(db, app)
@@ -235,6 +249,7 @@ def _out(db: Session, app: Application, detail: bool = False):
         last_attempt=_last_attempt(db, app),
         submission=states.submission_basis(app.state, receipt, by_user),
         reached_submission=reached,
+        rule=_rule(db, app),
     )
     if not detail:
         return AppOut(**base)

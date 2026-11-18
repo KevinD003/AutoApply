@@ -65,7 +65,8 @@ REASONS = {
     "rehearsal_queued": "A rehearsal (fill and check, never submit) was queued: the first "
     "application to this employer.",
     "submission_queued": "The submission was queued: this employer's rehearsal held.",
-    "capture_failed": "The job post could not be read as NoEfforts can map it; it waits for you.",
+    "capture_failed": "The job post could not be read as NoEfforts can map it; it is read again a "
+    "day later.",
     "open_questions": "Some questions need your answer; it continues once they are answered.",
     "checkpoint": "The form has a control NoEfforts cannot fill; apply on the employer's site.",
     "job_signal": "The job is closed, excluded or may duplicate another application.",
@@ -263,12 +264,15 @@ def _note(db: Session, user_id, job: Job, app: Application | None, action: str, 
 
 
 def _candidates(db: Session, user: User) -> list[Job]:
-    """The jobs the rule examines: the newest it may apply to (`JOBS_PER_TICK` of them) and, D170,
-    every job whose application waits on a form-change pause, whatever its age or state. Such an
-    application is shown with the rule's verdict (`verdict`), and the window never decides it:
-    newer jobs pushing it out and closing them bringing it back would hand it to the owner and
-    back again, and the owner may have applied by hand meanwhile."""
-    from app.modules.execution.models import PAUSE_UNRESOLVED, ApplicationPause
+    """The jobs the rule examines: D170, first every job whose application ever paused on a
+    changed form and is not final, whatever the job's age or state, then the newest it may apply
+    to (`JOBS_PER_TICK` of them). The owner is told the rule continues such an application, and
+    not to apply on the employer's site meanwhile (`verdict`), also once its pause has ended (the
+    rule's own read or try ends it): the window never decides it, since newer jobs pushing it out
+    would stall it and closing them would bring it back, sent long after the owner may have given
+    up and applied by hand. First, so a tick that runs out of time (the task's soft limit) reading
+    new posts never leaves them behind."""
+    from app.modules.execution.models import ApplicationPause
 
     jobs = db.scalars(
         select(Job)
@@ -281,22 +285,30 @@ def _candidates(db: Session, user: User) -> list[Job]:
         .limit(JOBS_PER_TICK * 4)
     ).all()
     newest = [j for j in jobs if live.posting(j.url) is not None][:JOBS_PER_TICK]
-    seen = {j.id for j in newest}
+    paused_once = (
+        select(ApplicationPause.id)
+        .where(
+            ApplicationPause.application_id == Application.id,
+            ApplicationPause.user_id == user.id,
+            ApplicationPause.kind == "form_changed",
+        )
+        .exists()
+    )
     waiting = db.scalars(
         select(Job)
         .join(Application, Application.job_id == Job.id)
-        .join(ApplicationPause, ApplicationPause.application_id == Application.id)
         .where(
             Job.user_id == user.id,
             Job.url.is_not(None),
             Application.user_id == user.id,
-            ApplicationPause.user_id == user.id,
-            ApplicationPause.kind == "form_changed",
-            ApplicationPause.status.in_(PAUSE_UNRESOLVED),
+            Application.state.notin_(FINAL_STATES),
+            paused_once,
         )
-        .order_by(ApplicationPause.created_at)
+        .order_by(Application.created_at)
     ).all()
-    return newest + [j for j in waiting if j.id not in seen and live.posting(j.url) is not None]
+    first = [j for j in waiting if live.posting(j.url) is not None]
+    firsts = {j.id for j in first}
+    return first + [j for j in newest if j.id not in firsts]
 
 
 def _application(db: Session, user: User, job: Job) -> Application | None:
@@ -429,12 +441,14 @@ def _yours(db: Session, user: User, app, pauses: list) -> str | None:
     """D169: why an application that paused is the owner's (a reason code), or None while the rule
     may continue it. D170: each reason is for good, so what is shown as the owner's stays theirs
     (D132's words promise "nothing is sent until you do")."""
-    from app.core.accounts import owner
 
     if _entered(db, app):  # D135's pause after filling among them
         return "stopped_after_entry"  # never entered a second time by the rule
-    if not owner(user.email) or _handed_to_you(db, app):
-        return "form_changed"  # D132's rule: this account chose under it, or D132 handed it over
+    if _handed_to_you(db, app):
+        # D132's rule: D132 handed it over, or the account was not the owner's when it paused
+        # (recorded with the pause, execution `_hand_over_unless_owner`); never re-derived from
+        # the server's settings as they are now, which may change back (D170).
+        return "form_changed"
     if _kept_changing(pauses):
         return "form_kept_changing"
     return None
@@ -574,8 +588,10 @@ def verdict(db: Session, user: User, app) -> tuple[str, str | None]:
     - WAITS: it would once what holds it lifts: automatic applying stopped now ("stopped":
       switched off or paused, the pilot not running here, no recorded permission covering it, its
       attempt limit used up, no approval allowed a day), the job's signals or the owner's
-      preferences ruling it out ("declined"), or the post unreadable since the pause began
-      ("unreadable", read again once a day). Never D132's words: how to take it over instead;
+      preferences ruling it out ("declined"), the post unreadable since the pause began
+      ("unreadable", read again once a day), or, the version to be tried once more, a question
+      waiting for the owner's answer ("questions"). Never D132's words: how to take it over
+      instead;
     - YOURS: it never will (D132's words), and that is for good: a final or revoked application,
       one begun before a restore or while one is unresolved, a job it never examines (not a post
       the pilot accepts), or what `_yours` leaves to the owner.
@@ -593,19 +609,40 @@ def verdict(db: Session, user: User, app) -> tuple[str, str | None]:
     pauses = _pauses(db, app)
     if _yours(db, user, app, pauses) is not None:
         return YOURS, None
-    if (
-        owner_refusal(user) is not None
-        or paused(db, user)
-        or _limit_used(db)
-        or get_settings().auto_apply_daily_cap <= 0
-    ):
+    if owner_refusal(user) is not None or paused(db, user) or limit_refusal(db) is not None:
         return WAITS, "stopped"
     if _declined(db, user, job) is not None:
         return WAITS, "declined"
     current = _unresolved(pauses)
-    if current is not None and current.status == "open" and _read_failed_since(db, job, current):
-        return WAITS, "unreadable"
+    if (
+        current is not None
+        and current.status == "open"
+        and (_read_failed_since(db, job, current) or _read_failed_recently(db, job, utcnow()))
+    ):
+        return WAITS, "unreadable"  # its next read is held a day after the last failed one
+    if current is not None and current.status == "unexplained" and _questions_open(db, app):
+        return WAITS, "questions"  # its next step, the try, waits for them (`open_questions`)
     return CONTINUES, None
+
+
+def _questions_open(db: Session, app) -> bool:
+    """D170: the application's package as it stands asks the owner for an answer (or holds one
+    the form refuses): the rule approves nothing until it is given (`_advance`)."""
+    from app.modules.preparation import package as pk
+
+    pkg = pk.latest_package(db, app.id)
+    return pkg is not None and bool(pkg.content["unresolved"] or pkg.content["validation_errors"])
+
+
+def limit_refusal(db: Session) -> str | None:
+    """D170: why the rule can approve nothing on this server now, beyond `owner_refusal`: the
+    recorded permission's attempts used up (D112), or no approval allowed a day (a daily cap of
+    0). Shown on the Tracker with automatic applying's state."""
+    if _limit_used(db):
+        return "limit_reached"
+    if get_settings().auto_apply_daily_cap <= 0:
+        return "no_daily_approvals"
+    return None
 
 
 def _read_failed_since(db: Session, job: Job, pause) -> bool:
@@ -623,11 +660,6 @@ def _read_failed_since(db: Session, job: Job, pause) -> bool:
         )
         is not None
     )
-
-
-def will_continue(db: Session, user: User, app) -> bool:
-    """D169: whether the standing rule continues this paused application by itself now."""
-    return verdict(db, user, app)[0] == CONTINUES
 
 
 def _paused_before_entry(db: Session, att: ExecutionAttempt) -> bool:
@@ -677,6 +709,9 @@ def _advance(db: Session, user: User, job: Job, now: datetime) -> str | None:
     from app.modules.preparation.models import ApprovalScope
     from app.modules.providers.routing import form_checkpoint
 
+    if job.user_id != user.id:  # D170: never another account's job, whatever selected it
+        log.error("auto-apply: a job of another account was selected; skipped")
+        return None
     app = _application(db, user, job)
     if app is not None:
         if app.state in FINAL_STATES:
@@ -775,8 +810,14 @@ def _advance(db: Session, user: User, job: Job, now: datetime) -> str | None:
             pk.require_valid_approval(db, app)
             transition(db, app, AppState.queued, Actor.user, QUEUE_REASON)
             enqueue(db, app).queued_by_rule = True
+    except SoftTimeLimitExceeded:  # D170: the task's time is up, not a refusal (`run_for`)
+        raise
     except Exception:  # noqa: BLE001 - any refusal leaves nothing queued; it waits for the owner
         log.info("auto-apply: queueing refused (job kept for the owner)")
+        if retry is not None:
+            # D170: nothing was queued, so that version was not tried once more: the pause stays
+            # as it was (with the rule's approval, which nothing used).
+            db.rollback()
         _note(db, user.id, job, app, "skipped", "queue_refused")
         return None
     _note(db, user.id, job, app, "approved_rehearsal" if rehearsal else "approved_submit",
@@ -788,8 +829,8 @@ def _advance(db: Session, user: User, job: Job, now: datetime) -> str | None:
 def run_for(db: Session, user: User, now: datetime | None = None) -> int:
     """The rule for one account; how many applications it queued."""
     now = now or utcnow()
-    if owner_refusal(user) or paused(db, user):
-        return 0
+    if owner_refusal(user) or paused(db, user) or limit_refusal(db) == "no_daily_approvals":
+        return 0  # D170: with no approval allowed a day, no post is read for nothing either
     queued = 0
     for job in _candidates(db, user):
         try:

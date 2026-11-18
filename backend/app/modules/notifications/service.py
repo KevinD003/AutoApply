@@ -206,10 +206,12 @@ _RULE_WAITS = {
     "stopped": _STOPPED + "Your automatic applying is stopped now (the Tracker shows why); "
     "when it runs again, it continues this application by itself." + _TAKE_OVER,
     "declined": _STOPPED + "Your automatic applying does not continue it while this job's "
-    "signals or your preferences rule it out (see the job); if that changes, it continues it by "
-    "itself." + _TAKE_OVER,
+    "signals or your preferences rule it out (the job's page says why); if that changes, it "
+    "continues it by itself." + _TAKE_OVER,
     "unreadable": _STOPPED + "Your automatic applying could not read the employer's page again "
     "(it tries once a day); once it can, it continues this application by itself." + _TAKE_OVER,
+    "questions": _STOPPED + "Your automatic applying tries this version once more by itself as "
+    "soon as you answer the open questions under Questions." + _TAKE_OVER,
 }
 _UNEXPLAINED = (
     "Reading the employer's form again showed no difference NoEfforts can see (the page's own "
@@ -248,10 +250,11 @@ def _pauses(db: Session, user_id) -> list[dict]:
                              _RULE_CONTINUES, link="/questions"))  # fmt: skip
             continue
         if rule == WAITS:  # D170: never D132's words while the rule may still send it
+            link = "/questions" if why == "questions" else f"/tracker?highlight={p.application_id}"
             out.append(_item(f"pause:{p.id}:{p.status}:waits:{why}", "form_changed",
                              p.created_at, p.application_id,
                              "The employer's form no longer matches", _RULE_WAITS[why],
-                             needs_action=True, link="/tracker"))  # fmt: skip
+                             needs_action=True, link=link))  # fmt: skip
             continue
         text = _UNEXPLAINED if p.status == "unexplained" else _PAUSE_TEXT
         out.append(_item(f"pause:{p.id}:{p.status}", "form_changed", p.created_at,

@@ -1094,7 +1094,7 @@ def approve(
 
     # S3 (D59): a closed, excluded or possibly duplicate job waits for your statement. Read
     # outside the package content, so answering it never changes the package.
-    code = signals.approval_refusal(db, db.get(Job, app.job_id))
+    code = signals.approval_refusal(db, db.get(Job, app.job_id, populate_existing=True))  # now
     if code is not None:
         raise ApprovalError(signals.refusal(code))
     active = active_approval(db, pkg)

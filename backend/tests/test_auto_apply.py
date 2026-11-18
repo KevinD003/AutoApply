@@ -135,9 +135,9 @@ def test_the_daily_cap_and_the_permission_limit_hold(api, receiver, monkeypatch)
     job = v2_job(api)
     assert tick() == 0
     answer(api, app_of(api, job))
-    monkeypatch.setattr(get_settings(), "auto_apply_daily_cap", 0)
-    assert tick() == 0 and events(job)[-1] == ("skipped", "daily_cap")
-    monkeypatch.setattr(get_settings(), "auto_apply_daily_cap", 5)
+    with monkeypatch.context() as m:  # today's approvals used up
+        m.setattr(service, "cap_used", lambda db, user_id, now=None: 5)
+        assert tick() == 0 and events(job)[-1] == ("skipped", "daily_cap")
     assert tick() == 1 and runner.run_attempt(latest_attempt(), "w1") == "rehearsed"
     assert tick() == 0 and events(job)[-1] == ("skipped", "permission_limit")  # 1 of 1 used
     assert receiver.ledger()["accepted"] == 0
@@ -501,12 +501,12 @@ def test_d169_a_step_any_other_check_declines_never_counts_as_a_try(api, receive
     receiver.config(mode="gh2_options_changed")
     assert runner.run_attempt(latest_attempt(), "w1") == "failed_safe"
     assert tick() == 0  # read: no difference
-    monkeypatch.setattr(get_settings(), "auto_apply_daily_cap", 0)
-    assert tick() == 0 and events(job)[-1] == ("skipped", "daily_cap")
+    with monkeypatch.context() as m:  # today's approvals used up
+        m.setattr(service, "cap_used", lambda db, user_id, now=None: 5)
+        assert tick() == 0 and events(job)[-1] == ("skipped", "daily_cap")
     (p,) = pause_rows(app_id)
     assert (p.status, p.resolution) == ("unexplained", None)
     assert ("continued", "form_tried_again") not in events(job)
-    monkeypatch.setattr(get_settings(), "auto_apply_daily_cap", 5)
     assert tick() == 1 and events(job)[-2] == ("continued", "form_tried_again")
 
 
@@ -549,6 +549,7 @@ def test_d169_an_account_that_is_not_the_owners_keeps_d132(api, other_api, recei
     item = next(i for i in other_api.get("/questions").json()["items"]
                 if i["application_id"] == app_id)  # fmt: skip
     assert item["rule_continues"] is False
+    assert rule_of(other_api, app_id) == [("yours", None)] * 2  # D170: never "waits"
 
 
 def test_d169_the_pause_says_whether_the_rule_continues_it(api, receiver):
@@ -846,7 +847,17 @@ def form_change_pause(api, receiver) -> tuple[str, str]:
     note, continues = pause_shown(api, app_id)
     assert continues is True and note["needs_action"] is False
     assert rule_of(api, app_id) == [("continues", None)] * 2
+    assert tracker_rule(api, app_id) == "continues"
     return job, app_id
+
+
+OTHER_ROLE = {"url": f"{BASE}/gh2/{BOARD}/jobs/5020003", "title": "Clinic Coordinator",
+              "employer": "Northwind Example (fictional)"}  # fmt: skip
+
+
+def tracker_rule(api, app_id: str) -> str | None:
+    """The rule's verdict as the Tracker's row for the application carries it."""
+    return next(a for a in api.get("/applications").json() if a["id"] == app_id)["rule"]
 
 
 def pause_shown(api, app_id: str) -> tuple[dict, bool]:
@@ -871,24 +882,32 @@ def assert_yours(api, app_id: str) -> None:
     note, continues = pause_shown(api, app_id)
     assert continues is False and note["needs_action"] is True
     unexplained = pause_rows(app_id)[-1].status == "unexplained"
-    d132 = "apply on the employer's site" if unexplained else "nothing is sent until you do"
-    assert d132 in note["text"]
+    if unexplained:
+        assert "apply on the employer's site" in note["text"]
+        assert "and then choose “I applied myself”" in note["text"]
+    else:
+        assert "nothing is sent until you do" in note["text"]
     assert "continues it by itself" not in note["text"]
     assert rule_of(api, app_id) == [("yours", None)] * 2
+    assert tracker_rule(api, app_id) == "yours"
 
 
 WAITS_WORDS = {"stopped": "is stopped now", "declined": "rule it out",
-               "unreadable": "could not read the employer's page again"}  # fmt: skip
+               "unreadable": "could not read the employer's page again",
+               "questions": "as soon as you answer the open questions"}  # fmt: skip
 
 
 def assert_waits(api, app_id: str, why: str) -> None:
     """Shown as waiting for the rule, with why: never D132's words, which would invite applying
     by hand while the rule may still send it; how to take it over instead."""
     note, continues = pause_shown(api, app_id)
-    assert continues is False and note["needs_action"] is True and note["link"] == "/tracker"
+    assert continues is False and note["needs_action"] is True
+    link = "/questions" if why == "questions" else f"/tracker?highlight={app_id}"
+    assert note["link"] == link and note["key"].endswith(f":waits:{why}")  # new when why changes
     assert WAITS_WORDS[why] in note["text"] and "I applied myself" in note["text"]
     assert "nothing is sent until you do" not in note["text"]
     assert rule_of(api, app_id) == [("waits", why)] * 2
+    assert tracker_rule(api, app_id) == "waits"
 
 
 def never_read_or_tried(receiver, app_id: str, reads: int) -> None:
@@ -935,7 +954,7 @@ def test_d170_a_paused_application_is_continued_whatever_its_jobs_age(api, recei
     newer = api.post("/jobs", json=other_role).json()["job"]["id"]  # a newer job, another role
     with SessionLocal() as db:
         examined = [j.id for j in service._candidates(db, db.get(User, owner_id()))]
-    assert examined == [uuid.UUID(newer), uuid.UUID(job)]
+    assert examined == [uuid.UUID(job), uuid.UUID(newer)]  # first: never left behind by time
     note, continues = pause_shown(api, app_id)
     assert continues is True and note["needs_action"] is False
     tick()  # the paused one read again: no difference, marked unexplained
@@ -944,6 +963,12 @@ def test_d170_a_paused_application_is_continued_whatever_its_jobs_age(api, recei
     tick()
     assert ("continued", "form_tried_again") in events(job)
     assert events(job)[-1] == ("approved_rehearsal", "rehearsal_queued")
+    # Its pause ended by the rule's own try: followed to the end all the same, never left to the
+    # window (stalled, then sent once newer jobs close, long after the owner may have given up).
+    assert runner.run_attempt(latest_attempt(), "w1") == "rehearsed"
+    assert tick() == 1 and events(job)[-1] == ("approved_submit", "submission_queued")
+    assert runner.run_attempt(latest_attempt(), "w1") == "confirmed"
+    assert receiver.ledger()["accepted"] == 1
 
 
 def test_d170_a_paused_application_on_a_possible_duplicate_waits_until_that_changes(api, receiver):
@@ -1038,11 +1063,13 @@ def test_d170_a_job_ruled_out_while_its_post_is_read_is_declined_after_the_read(
     api, receiver, monkeypatch
 ):
     # The decline is judged on what is true now: a preference the owner checks while the rule
-    # reads a new job's post declines it before anything is made of what was read.
+    # reads a new job's post declines it before anything is made of what was read (the rule's
+    # step read the owner's preferences before the read: never those again).
     from app.modules.applications.models import Application
 
     pilot_on()
     synthetic_candidate(api)
+    assert api.put("/profile/preferences", json={"titles": []}).status_code == 200
     job = v2_job(api)
     real = service._capture
 
@@ -1098,6 +1125,9 @@ def test_d170_a_pause_waits_for_the_rule_while_automatic_applying_is_stopped(
     # gate; the stop on a changed form came before it): its count is tested above.
     monkeypatch.setattr(live, "attempts_used", lambda db, since, exclude=None: 1)
     assert_waits(api, app_id, "stopped")
+    state = api.get("/auto-apply").json()  # "the Tracker shows why"
+    assert state["active"] is False and state["unavailable"]["code"] == "limit_reached"
+    assert "at most 1 attempts" in state["unavailable"]["message"]
     reads = requests_made(receiver)
     assert tick() == 0 and events(job)[-1] == ("skipped", "permission_limit")
     pilot_on(permitted=())  # no recorded permission: the rule does not run at all
@@ -1105,8 +1135,11 @@ def test_d170_a_pause_waits_for_the_rule_while_automatic_applying_is_stopped(
     assert tick() == 0 and events(job)[-1] == ("skipped", "permission_limit")
     never_read_or_tried(receiver, app_id, reads)
     pilot_on()  # a new permission
-    monkeypatch.setattr(get_settings(), "auto_apply_daily_cap", 0)
+    monkeypatch.setattr(get_settings(), "auto_apply_daily_cap", 0)  # no approval allowed a day
     assert_waits(api, app_id, "stopped")
+    assert api.get("/auto-apply").json()["unavailable"]["code"] == "no_daily_approvals"
+    assert tick() == 0  # the rule does nothing then: no post read for nothing
+    never_read_or_tried(receiver, app_id, reads)
     monkeypatch.setattr(get_settings(), "auto_apply_daily_cap", 5)
     note, continues = pause_shown(api, app_id)
     assert continues is True and note["needs_action"] is False
@@ -1323,6 +1356,222 @@ def test_d170_the_upgrade_leaves_every_application_paused_before_it_to_its_owner
     reads = requests_made(receiver)
     assert tick() == 0 and events(job)[-1] == ("skipped", "form_changed")
     assert requests_made(receiver) == reads
+    assert api.put("/auto-apply", json={"paused": True}).status_code == 200
+    assert_yours(api, app_id)  # never "waits" (its words promise it continues by itself)
+
+
+def test_d170_a_paused_application_is_followed_after_its_pause_whatever_its_jobs_age(
+    api, receiver, monkeypatch
+):
+    # The rule's read finds a new question, which ends the pause: the rule still examines the
+    # application however many jobs came after it, so the question is asked for (the feed's
+    # "Questions are waiting") and, answered, the application is approved by itself.
+    job, app_id = rehearsal_queued(api)
+    receiver.config(mode="gh2_question_added")
+    assert runner.run_attempt(latest_attempt(), "w1") == "failed_safe"
+    monkeypatch.setattr(service, "JOBS_PER_TICK", 1)
+    newer = api.post("/jobs", json=OTHER_ROLE).json()["job"]["id"]
+    assert tick() == 0 and events(job)[-1] == ("continued", "form_read_again")  # pause ended
+    assert tick() == 0 and events(job)[-1] == ("skipped", "open_questions")
+    kinds = [n["kind"] for n in api.get("/notifications").json()["items"]
+             if n["application_id"] == app_id]  # fmt: skip
+    assert "auto_apply_questions" in kinds
+    r = api.put(f"/applications/{app_id}/answers", json={"key": ADDED, "value": {"label": "Yes"}})
+    assert r.status_code == 200, r.text
+    assert tick() == 1 and events(job)[-1] == ("approved_rehearsal", "rehearsal_queued")
+    with SessionLocal() as db:
+        examined = [j.id for j in service._candidates(db, db.get(User, owner_id()))]
+    assert examined == [uuid.UUID(job), uuid.UUID(newer)]
+
+
+def test_d170_a_try_that_waits_for_your_answer_says_so(api, receiver):
+    # The version is to be tried once more, and its package now asks for an answer (here the owner
+    # cleared one): the rule approves nothing until it is given, so the pause asks for it, and
+    # never says "continues it by itself" meanwhile. Answered, the rule tries it by itself.
+    job, app_id = form_change_pause(api, receiver)
+    assert tick() == 0  # read again: no difference
+    assert pause_rows(app_id)[-1].status == "unexplained"
+    r = api.post(f"/applications/{app_id}/answers/clear", json={"key": "question_8101"})
+    assert r.status_code == 200, r.text
+    assert_waits(api, app_id, "questions")
+    assert tick() == 0 and events(job)[-1] == ("skipped", "open_questions")
+    assert pause_rows(app_id)[-1].status == "unexplained"  # never tried meanwhile
+    assert_waits(api, app_id, "questions")
+    kinds = [n["kind"] for n in api.get("/notifications").json()["items"]
+             if n["application_id"] == app_id]  # fmt: skip
+    assert kinds == ["form_changed"]  # one message for the application
+    assert api.get("/questions/count").json()["paused"] == 1
+    r = api.put(f"/applications/{app_id}/answers",
+                json={"key": "question_8101", "value": {"label": "Yes"}})  # fmt: skip
+    assert r.status_code == 200, r.text
+    note, continues = pause_shown(api, app_id)
+    assert continues is True and note["needs_action"] is False
+    assert tick() == 1 and events(job)[-2:] == [
+        ("continued", "form_tried_again"),
+        ("approved_rehearsal", "rehearsal_queued"),
+    ]
+
+
+def test_d170_a_pause_made_while_the_account_was_not_the_owners_stays_its_own(
+    api, other_api, receiver, monkeypatch
+):
+    # Not the owner's account when its attempt stopped (sole-owner mode off), its own rule off: D132
+    # holds for it, recorded with the pause, so a setting that makes it the owner's later (sole-
+    # owner mode switched on) never hands the application to the rule.
+    pilot_on()  # names only the `api` account as the server owner
+    monkeypatch.setattr(get_settings(), "all_accounts", True)
+    synthetic_candidate(other_api)
+    job = v2_job(other_api)
+    assert other_api.post(f"/jobs/{job}/form/greenhouse").status_code == 201
+    app_id = other_api.post("/applications", json={"job_id": job}).json()["id"]
+    answer(other_api, app_id)
+    assert other_api.get("/auto-apply").json()["paused"] is True  # off until it turns it on
+    approve_yourself(other_api, app_id)
+    receiver.config(mode="gh2_question_added")
+    assert runner.run_attempt(queue(other_api, app_id), "w1") == "failed_safe"
+    receiver.config(mode="normal")
+    assert events(job) == [("skipped", "form_changed")]  # with the pause, not by the rule
+    assert rule_of(other_api, app_id) == [("yours", None)] * 2
+    monkeypatch.setattr(get_settings(), "sole_owner", True)  # D168: every account the owner's
+    assert other_api.get("/auto-apply").json()["paused"] is False  # its rule on by default now
+    assert rule_of(other_api, app_id) == [("yours", None)] * 2
+    reads = requests_made(receiver)
+    assert tick() == 0 and events(job) == [("skipped", "form_changed")]
+    assert requests_made(receiver) == reads
+    assert receiver.ledger()["accepted"] == 0
+
+
+def test_d170_each_account_examines_only_its_own_paused_applications(
+    api, other_api, receiver, monkeypatch
+):
+    # Two accounts, each with a paused application on a stand-in posting and its rule on: each
+    # account's rule examines only its own, and none ever makes an application on a job of
+    # another account, whatever selected it.
+    from app.modules.applications.models import Application
+    from app.modules.jobs.models import Job
+
+    pilot_on()
+    monkeypatch.setattr(get_settings(), "all_accounts", True)
+    synthetic_candidate(other_api)
+    theirs_job = v2_job(other_api)
+    assert other_api.put("/auto-apply", json={"paused": False}).status_code == 200
+    tick()
+    theirs_app = app_of(other_api, theirs_job)
+    answer(other_api, theirs_app)
+    assert tick() == 1
+    receiver.config(mode="gh2_question_added")
+    assert runner.run_attempt(latest_attempt(theirs_app), "w1") == "failed_safe"
+    receiver.config(mode="normal")
+    job, app_id = form_change_pause(api, receiver)
+    with SessionLocal() as db:
+        other = db.scalar(select(User.id).where(User.id != owner_id()))
+        mine = {j.id for j in service._candidates(db, db.get(User, owner_id()))}
+        their = {j.id for j in service._candidates(db, db.get(User, other))}
+    assert uuid.UUID(job) in mine and uuid.UUID(theirs_job) not in mine
+    assert uuid.UUID(theirs_job) in their and uuid.UUID(job) not in their
+    real = service._candidates
+
+    def with_a_job_of_the_other_account(db, user):  # as a fault would select it
+        return real(db, user) + [db.get(Job, uuid.UUID(theirs_job))]
+
+    monkeypatch.setattr(service, "_candidates", with_a_job_of_the_other_account)
+    tick()
+    tick()
+    with SessionLocal() as db:
+        for a in db.scalars(select(Application)).all():
+            assert db.get(Job, a.job_id).user_id == a.user_id
+        on_theirs = AutoApplyEvent.job_id == uuid.UUID(theirs_job)
+        noted = db.scalars(select(AutoApplyEvent).where(on_theirs, AutoApplyEvent.user_id != other))
+        noted = noted.all()
+    assert noted == []  # nothing noted on it for the owner either
+
+
+def test_d170_the_tasks_time_limit_during_queueing_ends_the_tick(api, receiver, monkeypatch):
+    # Celery's soft limit can fire while the rule queues what it approved: never taken for a
+    # refusal, so nothing it began is kept (its approval among it) and no further job is started.
+    from celery.exceptions import SoftTimeLimitExceeded
+
+    from app.modules.execution import service as execution
+
+    _, app_id = ready(api)
+
+    def out_of_time(db, app):
+        raise SoftTimeLimitExceeded()
+
+    monkeypatch.setattr(execution, "enqueue", out_of_time)
+    with pytest.raises(SoftTimeLimitExceeded):
+        tick()
+    assert approvals(app_id) == []
+
+
+def test_d170_a_refused_queue_is_not_the_try_once_more(api, receiver, monkeypatch):
+    # The version to be tried once more, and the queue refused after the rule approved it: nothing
+    # was tried, so the pause stays as it was (unexplained, shown as the rule's), and the next
+    # step tries it.
+    from app.modules.execution import service as execution
+
+    job, app_id = form_change_pause(api, receiver)
+    assert tick() == 0  # read again: no difference
+    real = execution.enqueue
+
+    def refused(db, app):
+        raise RuntimeError("refused")
+
+    monkeypatch.setattr(execution, "enqueue", refused)
+    assert tick() == 0 and events(job)[-1] == ("skipped", "queue_refused")
+    (p,) = pause_rows(app_id)
+    assert (p.status, p.resolution) == ("unexplained", None)
+    assert ("continued", "form_tried_again") not in events(job)
+    assert [a for a in approvals(app_id) if a.by_rule and a.invalidated_at is None] == []
+    note, continues = pause_shown(api, app_id)
+    assert continues is True
+    monkeypatch.setattr(execution, "enqueue", real)
+    assert tick() == 1 and events(job)[-2:] == [
+        ("continued", "form_tried_again"),
+        ("approved_rehearsal", "rehearsal_queued"),
+    ]
+
+
+def test_d170_a_job_closed_just_before_the_rules_approval_is_not_approved(
+    api, receiver, monkeypatch
+):
+    # The job's state at the approval is as it is then: closed by the owner after the rule's
+    # step judged it, before the approval, the approval is refused.
+    from app.modules.preparation import package as pk
+
+    job, app_id = ready(api)
+    real = pk.ensure_current
+
+    def built_while_the_owner_closes_it(db, app):
+        out = real(db, app)
+        if str(app.id) == app_id:
+            assert api.patch(f"/jobs/{job}", json={"status": "closed"}).status_code == 200
+        return out
+
+    monkeypatch.setattr(pk, "ensure_current", built_while_the_owner_closes_it)
+    assert tick() == 0 and events(job)[-1] == ("skipped", "approval_refused")
+    assert approvals(app_id) == []
+
+
+def test_d170_a_read_held_by_a_recent_failure_is_shown_as_unreadable(api, receiver):
+    # A read of the post failed shortly before the pause: the rule's next read is held a day after
+    # it, so the pause waits as unreadable; a failure more than a day before the pause holds
+    # nothing, and the pause is shown as continued.
+    job, app_id = form_change_pause(api, receiver)
+    (p,) = pause_rows(app_id)
+    with SessionLocal() as db:
+        db.add(AutoApplyEvent(user_id=owner_id(), job_id=uuid.UUID(job),
+                              application_id=uuid.UUID(app_id), action="skipped",
+                              reason="capture_failed",
+                              created_at=p.created_at - timedelta(hours=2)))  # fmt: skip
+        db.commit()
+    assert_waits(api, app_id, "unreadable")
+    reads = requests_made(receiver)
+    assert tick() == 0
+    never_read_or_tried(receiver, app_id, reads)
+    back_date_events(job, timedelta(days=1))  # that failure now more than a day before
+    note, continues = pause_shown(api, app_id)
+    assert continues is True and note["needs_action"] is False
 
 
 def test_another_account_never_sees_or_triggers_the_owners_rule(api, other_api, receiver):

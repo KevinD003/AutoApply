@@ -13,11 +13,12 @@ export const TAKE_OVER =
 export const RULE_WAITS = {
   stopped: "Your automatic applying is stopped now (the Tracker shows why); when it runs again, it continues this application by itself.",
   declined:
-    "Your automatic applying does not continue it while this job's signals or your preferences rule it out (see the job); if that changes, " +
-    "it continues it by itself.",
+    "Your automatic applying does not continue it while this job's signals or your preferences rule it out (the job's page says why); if " +
+    "that changes, it continues it by itself.",
   unreadable:
     "Your automatic applying could not read the employer's page again (it tries once a day); once it can, it continues this application " +
     "by itself.",
+  questions: "Your automatic applying tries this version once more by itself as soon as you answer the open questions under Questions.",
 };
 
 // After D132's own "or apply on the employer's site": record it, so it is never sent twice.

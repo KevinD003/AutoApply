@@ -333,6 +333,7 @@ export default function ReviewPage() {
         scope={view.approval.status === "approved" ? view.approval.scope : null}
         prerequisiteUnmet={prereq.status === "unmet"}
         onChange={load}
+        rule={view.rule}
       />
 
       <FollowUpCard appId={id} refreshKey={view.state} hideUntilSubmitted />
