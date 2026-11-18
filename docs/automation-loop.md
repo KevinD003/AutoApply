@@ -1437,7 +1437,7 @@ action.
 
 ## Exact next action
 
-1. D171 (branch `credential-choice`): with a recorded permission that does not cover submitting,
+1. D171 (branch `rehearsal-only`): with a recorded permission that does not cover submitting,
    the rule rehearses and stops before submitting, and says so. Candidates after it: the
    Greenhouse pilot's own reads
    of what its form sends (D159's attributes, D160's controls and final click); leaving out one
