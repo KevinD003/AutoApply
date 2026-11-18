@@ -193,7 +193,7 @@ export default function ApplicationDebugPage() {
             <Rows
               label="Stops for you (a required control NoEfforts cannot fill)"
               items={c.checkpoints}
-              render={(x) => `${x.label ?? x.key}: ${x.reason ?? "not supported"}`}
+              render={(x) => `${x.label ?? x.key}: ${x.reason ?? "no reason recorded"}`}
             />
             <Rows
               label="Set by the page (a location search's value: checked after it, never filled)"
@@ -203,7 +203,7 @@ export default function ApplicationDebugPage() {
             <Rows
               label="Left empty (an optional control NoEfforts does not operate)"
               items={c.left_empty}
-              render={(x) => `${x.label ?? x.key}: ${x.reason ?? "not supported"}`}
+              render={(x) => `${x.label ?? x.key}: ${x.reason ?? "no reason recorded"}`}
             />
             <Rows
               label="Sections"
