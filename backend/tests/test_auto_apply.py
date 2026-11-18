@@ -1227,6 +1227,24 @@ def test_d170_a_page_that_kept_changing_is_yours_whatever_a_later_read_finds(api
     assert led["disclosures"] == [] and led["accepted"] == 0
 
 
+def test_d170_the_owners_own_read_finding_no_difference_counts_as_the_rules(api, receiver):
+    # The second stop on a version tried once more, read again by the owner before the rule could
+    # (no difference): the page kept changing, whoever read it, so it is never tried a third time.
+    job, app_id = rehearsal_queued(api)
+    receiver.config(mode="gh2_options_changed")
+    assert runner.run_attempt(latest_attempt(), "w1") == "failed_safe"
+    assert tick() == 0 and tick() == 1  # read again (no difference), then tried once more
+    assert runner.run_attempt(latest_attempt(), "w1") == "failed_safe"  # stopped on it again
+    assert api.post(f"/applications/{app_id}/form/recapture").status_code == 200
+    assert pause_rows(app_id)[-1].status == "unexplained"
+    assert_yours(api, app_id)
+    reads = requests_made(receiver)
+    assert tick() == 0 and events(job)[-1] == ("skipped", "form_kept_changing")
+    assert requests_made(receiver) == reads
+    led = receiver.ledger()
+    assert led["disclosures"] == [] and led["accepted"] == 0
+
+
 def test_d170_the_upgrade_leaves_every_application_paused_before_it_to_its_owner(
     api, other_api, receiver
 ):
