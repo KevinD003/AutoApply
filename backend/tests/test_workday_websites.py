@@ -24,7 +24,7 @@ from app.modules.execution import runner
 from app.modules.execution.adapters import greenhouse_sections as gs
 from app.modules.execution.adapters import workday as wd_adapter
 from app.modules.execution.adapters import workday_sections as ws
-from app.modules.execution.adapters.fixture_ats import FORM_CHANGED
+from app.modules.execution.adapters.fixture_ats import FORM_CHANGED, SECTION_KIND_LIMIT_AT_FOCUS
 from app.modules.preparation import package as pk
 from app.modules.preparation import structured_sections as ss
 from app.modules.preparation import workday
@@ -887,6 +887,24 @@ def test_a_section_the_page_requires_since_approval_pauses_before_anything_is_en
     assert runner.run_attempt(aid, "w1") == "failed_safe"
     led = receiver.ledger()
     assert led["disclosures"] == [] and led["accepted"] == 0
+    assert FORM_CHANGED in attempt(aid).outcome_detail  # D167 review: the pause itself
+    with SessionLocal() as db:
+        assert pk.unresolved_pause(db, uuid.UUID(app_id)) is not None
+
+
+def test_a_link_its_box_would_cut_stops_naming_your_websites(api, receiver):
+    """D162's limit at focus, for a link (D167 review): the stop names your websites and the
+    limit, not a work entry; nothing of the entry is recorded, and the page with the entries is
+    never sent."""
+    app_id = application(api, receiver)
+    receiver.config(wd_limit_on_focus={'[name="web[0].url"]': 10})
+    aid = queue(api, app_id)
+    assert runner.run_attempt(aid, "w1") == "abandoned"
+    assert SECTION_KIND_LIMIT_AT_FOCUS.format(what="websites", limits=10) in (
+        attempt(aid).outcome_detail)  # fmt: skip
+    assert [d for d in rows(aid, "disclosure") if d.get("kind") == "section_field"] == []
+    led = receiver.ledger()
+    assert led["accepted"] == 0 and draft_pages(led) == [1]
 
 
 def test_an_empty_entry_shown_since_approval_is_filled_in_place(api, receiver):

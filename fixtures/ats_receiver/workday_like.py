@@ -139,6 +139,19 @@ tenant:
        refuse a value that does not start with http:// or https:// (as a real page's validation
        might). A Websites section the page requires (`aria-required`, and an asterisk in its
        heading) refuses a page without a website. No real Workday Websites section was observed.
+  FA12 (D167) My Experience may also carry a Certifications section, FA11's way: a <div
+       data-wd-section="certifications"> on its page with no entry at load and one button, "Add"
+       (then "Add Another"), that appends an entry built from a <template> outside the form. An
+       entry's controls are named cert[i].name (Certification, a text box, required), .number
+       (Certification Number, a text box) and .issued and .expires (Issued Date and Expiration
+       Date, text, MM/YYYY), each but the name optional. A Next saves the entries with the rest
+       of their page, and the page's own checks then refuse an entry without a name, a date given
+       but not written MM/YYYY, or an issued date after the expiration date (the draft row is
+       written first, FA3); a Certifications section the page requires (`aria-required`, and an
+       asterisk in its heading) refuses a page without a certification. Workday's job
+       application templates list Certifications among their sections (search-reported); no
+       real Workday Certifications section was observed: on a real page Certification may be a
+       prompt of the employer's own list, which NoEfforts never fills (a checkpoint).
 cfg["wizard"] values: plain; drift (a required q.weekends on page 4 at load); already_applied
 (shown at open instead of the form); step_error (the page-2 draft is answered 422 with errors);
 step_timeout (the page-2 draft reply waits cfg["delay_s"]); late_question (the page-2 reply
@@ -180,7 +193,18 @@ with a value of its own), each with FA10's three sections; and websites (the Web
 alone). D166 review: websites_hidden_after_typing (once a website is typed, the page keeps a value
 of its own in a hidden field outside the section) and websites_added_after_typing (once a website
 is typed, the page adds a Websites entry holding a value of its own), each with FA10's sections;
-the single page's wd_websites_hidden_after_typing likewise.
+the single page's wd_websites_hidden_after_typing likewise. D167, FA12: certifications (the
+Certifications section on page 2), certifications_required (the page requires an entry),
+certifications_entry_at_load (one empty entry already there at load), certifications_parse (a
+resume upload adds an entry with values of its own), certifications_hidden_after_typing (once a
+certification is typed, the page keeps a value of its own in a hidden field outside the section),
+certifications_added_after_typing (once one is typed, the page adds an entry holding a value of its
+own), certifications_number_after_typing (once one is typed, the page writes a number into that
+entry's number box), certifications_and_experience (with the Work Experience and Education sections, FA7 and FA9)
+and certifications_and_other_sections (with FA10's sections); the single page's wd_certifications,
+wd_certifications_hidden_after_typing and (D167 review) wd_certifications_number_after_typing. D167
+review: cfg["sends"] "latin1_form" (D159's switch) makes either page's application form send in
+ISO-8859-1.
 The single page's mode wd_experience puts the Work Experience section on its My Experience
 section, wd_education the Education section, and wd_other_sections FA10's three sections
 (wd_other_sections_parse: with other_sections_hidden_parse's upload).
@@ -434,7 +458,8 @@ WORK_VARIANTS = ("experience", "experience_required", "experience_parse",
                  "experience_changed_after_next", "experience_parts_required",
                  "experience_limits", "experience_limits_at_load",
                  "education_and_experience",  # D163: both sections on page 2
-                 "other_sections_and_experience")  # fmt: skip  # D165: with FA10's
+                 "other_sections_and_experience",  # D165: with FA10's
+                 "certifications_and_experience")  # fmt: skip  # D167: with FA12
 # D157, FA7: the length limits (`maxlength`) of an entry's typed parts in experience_limits; in
 # experience_limits_at_load the entry already on the page limits its Role Description to 100.
 WORK_LIMITS = {"title": 40, "company": 40, "location": 30, "from": 7, "to": 7, "description": 200}
@@ -551,7 +576,8 @@ def _work_errors(fields: dict, required: bool, parts_required: bool = False,
 EDU_VARIANTS = ("education", "education_required", "education_and_experience",
                 "other_sections_and_education",  # D165: with FA10's sections
                 "education_entry_at_load", "education_unknown_control", "education_parse",
-                "education_changed_after_next", "education_add_broken")  # fmt: skip
+                "education_changed_after_next", "education_add_broken",
+                "certifications_and_experience")  # fmt: skip  # D167: with FA12
 # The lists' options: (value, text); each value an id of the page's own (fixture design).
 EDU_SCHOOLS = (("sch-101", "State University"), ("sch-102", "Metro College"),
                ("sch-103", "Riverside Institute of Technology"))  # fmt: skip
@@ -646,7 +672,8 @@ OTHER_VARIANTS = ("other_sections", "other_sections_required", "other_sections_e
                   "other_sections_and_education",
                   "websites_required", "websites_entry_at_load", "websites_parse",
                   "websites", "websites_hidden_after_typing",
-                  "websites_added_after_typing")  # fmt: skip
+                  "websites_added_after_typing",
+                  "certifications_and_other_sections")  # fmt: skip  # D167: with FA12
 # The single page's modes with the three sections (wd_other_sections_parse: the resume parse
 # adds a hidden Skills value outside the section, as other_sections_hidden_parse does).
 OTHER_MODES = ("wd_other_sections", "wd_other_sections_parse", "wd_websites_hidden_after_typing")
@@ -765,6 +792,126 @@ def _other_errors(fields: dict, required: str | None) -> list[str]:
     return errors + [f"Enter a web address for {k}" for k, v in fields.items()
                      if (m := _OTHER_NAME.fullmatch(k)) and m[1] == "web" and v
                      and not _WEB_VALUE.fullmatch(v)]  # fmt: skip
+
+
+# D167, FA12: My Experience's Certifications section, by wizard variant (the single page's modes
+# are CERT_MODES).
+CERT_VARIANTS = ("certifications", "certifications_required", "certifications_entry_at_load",
+                 "certifications_parse", "certifications_hidden_after_typing",
+                 "certifications_added_after_typing", "certifications_number_after_typing",
+                 "certifications_and_experience", "certifications_and_other_sections")  # fmt: skip
+CERT_MODES = ("wd_certifications", "wd_certifications_hidden_after_typing",
+              "wd_certifications_number_after_typing")  # fmt: skip  # the variant, prefixed wd_
+_CERT_NAME = re.compile(r"cert\[(\d+)\]\.([a-z_]+)")
+# What the resume parse puts in the Certifications entry it adds (certifications_parse; fixture
+# design).
+PARSED_CERT = {"name": "Parsed Certification (fictional)", "issued": "01/2020"}
+# What the page keeps or adds once a certification is typed (the *_after_typing variants), and the
+# number it writes into that entry's own number box (certifications_number_after_typing).
+UNAPPROVED_CERT = "Unapproved Certification (fictional)"
+UNAPPROVED_NUMBER = "X-0000 (fictional)"
+_CERT_AFTER_TYPING = """
+document.addEventListener('change', (e) => {
+  if (window.certTyped || !/^cert\\[\\d+\\]\\.name$/.test(e.target.name || '')) return;
+  window.certTyped = true;
+  if ('%MODE%' === 'hidden') {
+    const h = document.createElement('input');
+    h.type = 'hidden'; h.name = 'cert[7].name'; h.value = '%VALUE%';
+    e.target.form.append(h);
+  } else if ('%MODE%' === 'number') {
+    document.querySelector(`[name="${e.target.name.replace('.name', '.number')}"]`).value =
+      '%NUMBER%';
+  } else {
+    const i = window.addCertEntry();
+    document.querySelector(`[name="cert[${i}].name"]`).value = '%VALUE%';
+  }
+});"""
+
+
+def _cert_entry(i: str, n: str) -> str:
+    """FA12: one Certifications entry; `i` its index in the control names, `n` its number on the
+    page. Certification is typed (a real page may offer a prompt of the employer's own list);
+    the number and both dates are optional."""
+    return (f'<div data-wd-entry="{i}"><h4>Certifications {n}</h4>'
+            f'<label for="cert-{i}-name">Certification</label>'
+            f'<input id="cert-{i}-name" name="cert[{i}].name" type="text" required>'
+            f'<label for="cert-{i}-number">Certification Number</label>'
+            f'<input id="cert-{i}-number" name="cert[{i}].number" type="text">'
+            f'<label for="cert-{i}-issued">Issued Date</label>'
+            f'<input id="cert-{i}-issued" name="cert[{i}].issued" type="text" '
+            'placeholder="MM/YYYY">'
+            f'<label for="cert-{i}-expires">Expiration Date</label>'
+            f'<input id="cert-{i}-expires" name="cert[{i}].expires" type="text" '
+            'placeholder="MM/YYYY"></div>')  # fmt: skip
+
+
+def _cert_section(variant: str | None) -> tuple[str, str, str]:
+    """FA12: the section's markup (on My Experience), its entry template (outside the form) and
+    its script; nothing for any other variant."""
+    if variant not in CERT_VARIANTS:
+        return "", "", ""
+    required = ' aria-required="true"' if variant == "certifications_required" else ""
+    at_load = _cert_entry("0", "1") if variant == "certifications_entry_at_load" else ""
+    markup = (f'<div id="certifications" role="group" aria-labelledby="certifications-label" '
+              'data-wd-section="certifications" data-wd-entry-template="certifications-entry"'
+              f'{required}><h3 id="certifications-label">Certifications'
+              f'{" *" if required else ""}</h3><div data-wd-entries>{at_load}</div>'
+              f'<button type="button" data-wd-add>{"Add Another" if at_load else "Add"}'
+              "</button></div>")  # fmt: skip
+    template = f'<template id="certifications-entry">{_cert_entry("__i__", "__n__")}</template>'
+    script = """
+window.addCertEntry = () => {
+  const sec = document.getElementById('certifications');
+  const entries = sec.querySelector('[data-wd-entries]');
+  const i = entries.querySelectorAll('[data-wd-entry]').length;
+  const tpl = document.getElementById('certifications-entry').innerHTML;
+  entries.insertAdjacentHTML('beforeend',
+    tpl.replaceAll('__i__', String(i)).replaceAll('__n__', String(i + 1)));
+  sec.querySelector('[data-wd-add]').textContent = 'Add Another';
+  return i;
+};
+document.getElementById('certifications').querySelector('[data-wd-add]')
+  .addEventListener('click', () => window.addCertEntry());"""
+    after = {"certifications_hidden_after_typing": "hidden",
+             "certifications_added_after_typing": "added",
+             "certifications_number_after_typing": "number"}  # fmt: skip
+    if variant in after:  # the page changes once a certification is typed
+        script += (_CERT_AFTER_TYPING.replace("%MODE%", after[variant])
+                   .replace("%VALUE%", UNAPPROVED_CERT).replace("%NUMBER%", UNAPPROVED_NUMBER))  # fmt: skip
+    return markup, template, script
+
+
+def _cert_errors(fields: dict, required: bool) -> list[str]:
+    """FA12: what the page's own checks refuse in its Certifications section: a section the page
+    requires without an entry, an entry without a name, a value given twice, a date given but not
+    written MM/YYYY, or an issued date after the expiration date."""
+    entries: dict[str, dict] = {}
+    errors = []
+    for k, v in fields.items():
+        if m := _CERT_NAME.fullmatch(k):
+            if isinstance(v, list):
+                errors.append(f"Enter one value for {k}")
+                continue
+            entries.setdefault(m[1], {})[m[2]] = v
+    if required and not entries:
+        errors.append("Add a certification")
+    for i, e in sorted(entries.items(), key=lambda x: int(x[0])):
+        if not e.get("name"):
+            errors.append(f"Enter cert[{i}].name")
+        dates = {p: e.get(p) or "" for p in ("issued", "expires")}
+        errors += [f"Enter a date as MM/YYYY for cert[{i}].{p}" for p, d in dates.items()
+                   if d and not _MONTH_YEAR.fullmatch(d)]  # fmt: skip
+        if all(_MONTH_YEAR.fullmatch(d) for d in dates.values()):
+            issued, expires = ((int(d[3:]), int(d[:2])) for d in dates.values())
+            if issued > expires:
+                errors.append(f"The issued date is after the expiration date for cert[{i}]")
+    return errors
+
+
+def _charset(cfg: dict) -> str:
+    """D167 review (fixture design): with cfg["sends"] "latin1_form" (D159's switch on the generic
+    page) the application form sends in ISO-8859-1, as a page's `accept-charset` may make it."""
+    return ' accept-charset="ISO-8859-1"' if (cfg or {}).get("sends") == "latin1_form" else ""
 
 
 def _follow_up_required(shape: tuple[bool, bool, bool] | None, fields: dict) -> bool:
@@ -887,11 +1034,14 @@ def _form_page(tenant: str, req: str, token: str, cfg: dict) -> HTMLResponse:
     other, other_template, other_js = _other_sections(  # D165, FA10
         None if mode not in OTHER_MODES else "websites_hidden_after_typing"
         if mode == "wd_websites_hidden_after_typing" else "other_sections")  # fmt: skip
+    cert, cert_template, cert_js = _cert_section(  # D167, FA12
+        mode.removeprefix("wd_") if mode in CERT_MODES else None)
+    charset = _charset(cfg)  # D167 review
     phone_check, check_js = _page_check(cfg)  # D154, FA8
     body = f"""<h1>{html.escape(title)} — {html.escape(employer)} (Workday-shaped fixture)</h1>
 <p>Apply Manually</p>
 {progress}
-<form id="workday-application" action="{base}" method="post" enctype="multipart/form-data">
+<form id="workday-application" action="{base}" method="post" enctype="multipart/form-data"{charset}>
 <input type="hidden" name="form_token" value="{token}">
 <section data-step="My Information">
 <div id="source_label">How did you hear about us?</div>
@@ -916,6 +1066,7 @@ def _form_page(tenant: str, req: str, token: str, cfg: dict) -> HTMLResponse:
 {work}
 {edu}
 {other}
+{cert}
 </section>
 <section data-step="Application Questions">
 {_yes_no("q.work_eligibility", "Are you legally authorized to work in the United States?", True)}
@@ -949,6 +1100,7 @@ def _form_page(tenant: str, req: str, token: str, cfg: dict) -> HTMLResponse:
 {work_template}
 {edu_template}
 {other_template}
+{cert_template}
 <script>
 for (const input of document.querySelectorAll('input[type=file][data-wd-file]')) {{
   input.addEventListener('change', async () => {{
@@ -976,7 +1128,7 @@ for (const input of document.querySelectorAll('input[type=file][data-wd-file]'))
       }}
     }} catch (e) {{ st.textContent = 'Upload failed'; st.dataset.attachmentError = '1'; }}
   }});
-}}{follow_up_js}{work_js}{edu_js}{other_js}{check_js}
+}}{follow_up_js}{work_js}{edu_js}{other_js}{cert_js}{check_js}
 </script>""" + _limit_on_focus(cfg)
     return _page(f"{title} — {employer}", body, "form")
 
@@ -1006,12 +1158,14 @@ def _wizard_page(tenant: str, req: str, token: str, cfg: dict) -> HTMLResponse:
     work, work_template, work_js = _work_section(variant)  # D149, FA7
     edu, edu_template, edu_js = _edu_section(variant)  # D163, FA9
     other, other_template, other_js = _other_sections(variant)  # D165, FA10
+    cert, cert_template, cert_js = _cert_section(variant)  # D167, FA12
+    charset = _charset(cfg)  # D167 review
     phone_check, check_js = _page_check(cfg)  # D154, FA8
     body = f"""<h1>{html.escape(title)} — {html.escape(employer)} (Workday-shaped fixture)</h1>
 <p>Apply Manually</p>
 <div data-wizard-progress>Page 1 of {len(WIZARD_PAGES)}</div>
 <span data-draft-status="idle" data-draft-page="0"></span>
-<form id="workday-application" action="{base}" method="post" enctype="multipart/form-data"
+<form id="workday-application" action="{base}" method="post" enctype="multipart/form-data"{charset}
  data-wizard-pages="{len(WIZARD_PAGES)}" data-wizard-current="1">
 <input type="hidden" name="form_token" value="{token}">
 <section data-step="My Information" data-wizard-page="1">
@@ -1039,6 +1193,7 @@ def _wizard_page(tenant: str, req: str, token: str, cfg: dict) -> HTMLResponse:
 {work}
 {edu}
 {other}
+{cert}
 {_NEXT}
 </section>
 <section data-step="Voluntary Disclosures" data-wizard-page="3" hidden>
@@ -1075,6 +1230,7 @@ def _wizard_page(tenant: str, req: str, token: str, cfg: dict) -> HTMLResponse:
 {work_template}
 {edu_template}
 {other_template}
+{cert_template}
 <script>
 for (const input of document.querySelectorAll('input[type=file][data-wd-file]')) {{
   input.addEventListener('change', async () => {{
@@ -1121,6 +1277,13 @@ for (const input of document.querySelectorAll('input[type=file][data-wd-file]'))
             const el = document.querySelector(`[name="${{otherPrefix[kind]}}[${{i}}].${{k}}"]`);
             if (el) el.value = v;
           }}
+        }}
+      }}
+      for (const entry of (j.cert_entries || [])) {{  // D167: a Certifications entry (FA12)
+        const i = window.addCertEntry();
+        for (const [k, v] of Object.entries(entry)) {{
+          const el = document.querySelector(`[name="cert[${{i}}].${{k}}"]`);
+          if (el) el.value = v;
         }}
       }}
       if (j.require_section) window.requireOtherSection(j.require_section);  // D165 (FA10)
@@ -1192,7 +1355,7 @@ for (const btn of form.querySelectorAll('[data-wizard-next]')) {{
     progress.textContent = `Page ${{i + 1}} of ${{pages}}`;
     status.dataset.draftStatus = 'saved';
   }});
-}}{follow_up_js}{work_js}{edu_js}{other_js}{check_js}
+}}{follow_up_js}{work_js}{edu_js}{other_js}{cert_js}{check_js}
 </script>""" + _limit_on_focus(cfg)
     return _page(f"{title} — {employer}", body, "form")
 
@@ -1264,6 +1427,8 @@ def mount(app, ledger, cfg, accept) -> None:
             out["other_entries"] = {"skills": [PARSED_SKILL]}  # D165, FA10 (fixture design)
         if cfg.get("wizard") == "websites_parse" and field == "resume":
             out["other_entries"] = {"websites": [PARSED_WEBSITE]}  # D166, FA11 (fixture design)
+        if cfg.get("wizard") == "certifications_parse" and field == "resume":
+            out["cert_entries"] = [PARSED_CERT]  # D167, FA12 (fixture design)
         if cfg.get("wizard") == "other_sections_required_late" and field == "resume":
             out["require_section"] = "languages"  # D165, FA10: required once the resume is in
         if field == "resume" and (cfg.get("wizard") == "other_sections_hidden_parse"
@@ -1315,6 +1480,10 @@ def mount(app, ledger, cfg, accept) -> None:
                 return JSONResponse({"errors": errors}, status_code=422)
         if variant in OTHER_VARIANTS and page == 2:  # D165, FA10
             errors = _other_errors(fields, OTHER_REQUIRED.get(variant))
+            if errors:
+                return JSONResponse({"errors": errors}, status_code=422)
+        if variant in CERT_VARIANTS and page == 2:  # D167, FA12
+            errors = _cert_errors(fields, variant == "certifications_required")
             if errors:
                 return JSONResponse({"errors": errors}, status_code=422)
         if variant == "step_error" and page == 2:
@@ -1380,6 +1549,8 @@ def mount(app, ledger, cfg, accept) -> None:
             missing += _edu_errors(fields, wizard == "education_required")
         if mode in OTHER_MODES or wizard in OTHER_VARIANTS:  # D165, FA10
             missing += _other_errors(fields, OTHER_REQUIRED.get(wizard))
+        if mode in CERT_MODES or wizard in CERT_VARIANTS:  # D167, FA12
+            missing += _cert_errors(fields, wizard == "certifications_required")
         if wizard:  # D142, FA4: every page before Review was saved under this form token
             saved = {d["page"] for d in drafted_pages(slug, token)}
             missing += [f"page {i}" for i in range(1, len(WIZARD_PAGES)) if i not in saved]

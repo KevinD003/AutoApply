@@ -54,6 +54,85 @@ compact summary built from the same consolidation, so list and detail never disa
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
 
+## The owner's console: one application from start to finish, every switch and why; sole-owner mode (D168, 2026-11-17; local only)
+
+The owner's request of 2026-11-17, outside the ranked backlog (D168 quotes it). Product changes:
+
+- `app/modules/debug/` (new): `router.py` (`/api/debug/system`, `/api/debug/activity`,
+  `/api/debug/applications/{id}`; app-only), `service.py` (`system`, `activity`, `trace`);
+  `app/main.py` mounts it.
+- `app/core/config.py`: `sole_owner`, on by default outside tests (`_d113_defaults`).
+- `app/core/accounts.py`: `named` and `owner` hold for every account in sole-owner mode.
+- `app/modules/inbox/service.py`: `named_inbox_owner`; `is_inbox_owner` in sole-owner mode;
+  `owner_token_file` (the server's token file for the named owner only); `reader` (no fallback);
+  the token file read once per read (`check`, `fill_codes`, `inbox_tick`).
+- `app/modules/autoapply/service.py`: `approved_today` for every account, `cap_used` (one cap
+  for every account in sole-owner mode, with its lock), `tick` in sole-owner mode;
+  `router.py`: the cap's count and `cap_every_account`.
+- `frontend/src/app/(app)/debug/page.jsx`, `frontend/src/app/(app)/applications/[id]/debug/page.jsx`,
+  `frontend/src/lib/debug.js` (new); the Account page's Debugger card; the review page's "Debug
+  this application"; `AutoApplyCard.jsx` (the cap across every account).
+- `.env.example`, `docker-compose.yml`: `NOEFFORTS_SOLE_OWNER`.
+- Docs: D114's mailbox note, `email-tracking.md`, `inbox.md`.
+
+No migration, no new state, reason code, permission or retry; `SCHEMA_VERSION` unchanged.
+Nothing was run against a real page or mailbox. `scripts/validate.sh all` was not run (it runs
+the whole backend and e2e suites); the full e2e suite, ruff, tsc and eslint were.
+
+| Check (branch `process-debugger`, from main at f927e8f; main with #77 merged in at 980cac5) | Command | Result |
+|---|---|---|
+| The first version's tests | `test_debug_console.py` (JUnit) on the working tree before df08d96; the owner suites (`test_debug_console.py`, `test_auto_apply.py`, `test_inbox.py`, `test_connections.py`, `test_authorizations.py`); the route, privacy and document guards (`test_api_tokens.py`, `test_audit_inventory.py`, `test_deployment_config.py`, `test_forbidden_capabilities.py`, `test_error_boundary.py`, `test_account.py`, `test_doc_references.py`, `test_retained_data_privacy.py`, `test_audit_privacy.py`); `debugger.spec.ts`; the 8 nav, review and account specs | first 13, 2 failed (an optional control counted as a checkpoint; a permissions test reading the empty register conftest leaves); then 14 passed; 119 passed; 271 passed; e2e 4 passed (after two test fixes: a section's summary, a link named twice); 31 passed |
+| Two independent reviews | on df08d96 | the security review: a mailbox read could fall back to the server's token file mid-read; the cap counted per account; weak tests; owner-only fields to every account; weaker scrubbing. The correctness review: the warnings ignored the account's own consent; "working" for the pilot with its limit used, the stand-ins outside tests, Gmail and drafting; a failed rehearsal as an attempt; the nav entry cut off; the activity list's loads; the timeline's text sort; missing steps. Each fixed, with its test (92e9b1a, 61e1c83) |
+| After the reviews | the 16 suites the fixes touch (JUnit) on 92e9b1a; `test_debug_console.py` on 61e1c83; `debugger.spec.ts`, `account.spec.ts`, `auto-apply-pause.spec.ts`, `layout-regression.spec.ts`; ruff, tsc, eslint | 477 passed; 25 passed; e2e 15 passed (desktop and mobile); clean |
+| Each part changed in turn | 57 changes on 61e1c83, one at a time (a worktree of its own), the named tests run, the file restored | each of the 57 fails the tests named for its part (74 failures among the 74 tests run). The trace's account check alone was not caught at first: the trace checks the account twice (the application's and its job's), so removing one leaves the other; removed together, all three named tests fail |
+| The regression set | `pytest` on the 41 suites that exercise accounts, the mailbox, the standing rule, Gmail, drafting access, discovery and the pilot (JUnit), in a copy of the branch at 4d9b103, a database and ports of its own | exit 0, 2,474 passed (29 minutes) |
+| The full e2e suite | `npx playwright test` on 4d9b103 | 194 passed, 3 skipped (14.1 minutes) |
+| After its records | the document tests (`test_doc_references.py`, `test_approval_reasons.py`, `test_audit_inventory.py`, `test_deployment_config.py`, `test_account.py`), `test_debug_console.py` and `test_auto_apply.py` (JUnit, after the cap lock's comment was corrected: the application's row lock comes before it); `ruff format .`, `ruff check .`, `ruff format --check .` | exit 0; 91 passed in 123 s; ruff formatted nothing, found nothing, and the format check passed |
+
+## Your licences and certifications fill a Workday-style Certifications section (D167, 2026-11-17; local only)
+
+Rank 34 of the automation loop (a Workday-style Certifications section, a kind no reader took).
+Product changes:
+
+- `app/modules/preparation/workday.py`: `CERTIFICATIONS`, `CERTIFICATIONS_KEY`,
+  `CERTIFICATIONS_REASON`, `_CERT_BOXES`, `_cert_entry`, `_certifications_section`;
+  `extract_schema` adds the section, or its checkpoint; `_work_section` leaves it alone;
+  `_entry_control` skips its entries' controls.
+- `app/modules/preparation/structured_sections.py`: `current`, `resolve_certification_row`,
+  `resolve_section("certifications")`; (review) `_date_field` refuses a year of fewer than four
+  digits.
+- `app/modules/preparation/package.py`: your approved credentials as a certifications section's
+  records, `SECTION_REQUIRED["certifications"]`, the diff.
+- `app/modules/preparation/forms.py`: `SectionSpec.kind` may be `certifications`.
+- `app/modules/execution/adapters/greenhouse_sections.py`: a certifications section's content
+  read (`_cert_row_ok`), never planned.
+- `app/modules/execution/adapters/workday_sections.py`, `workday.py`: the `certifications` entry
+  kind (its number never filled, `_CERT_NEVER`) and its stops; (review) a box's limit at focus
+  names the section.
+- `app/modules/execution/adapters/fixture_ats.py`: (review) D159's character-set check reads what
+  sections send.
+- `app/modules/execution/policy.py`: the Workday-style adapter's capability text.
+- `app/modules/profiles/router.py`: a change to a credential retires an approval of a package
+  sending a certifications section at once.
+- `frontend/src/app/(app)/applications/[id]/page.jsx`: the section shown and diffed.
+- `fixtures/ats_receiver/workday_like.py`: FIXTURE ASSUMPTION FA12 and its variants; (review) the
+  latin1 switch.
+
+No migration, no new state, reason code or gate. `SCHEMA_VERSION` stays 3 (D167 says why).
+Nothing was run against a real page. `scripts/validate.sh all` was not run (it runs the whole
+backend and e2e suites); ruff, tsc and eslint were.
+
+| Check (branch `workday-certifications`, from workday-websites at 642ef8d; main f927e8f merged in at ffbc299) | Command | Result |
+|---|---|---|
+| The first version's tests | `pytest tests/test_workday_certifications.py`, then with `tests/test_workday_websites.py`; the 20 suites the change touches (JUnit); `npx playwright test e2e/workday.spec.ts`; the full e2e suite | 170 passed, then 173; the 20 suites: 1,557 passed; workday.spec.ts: 12 passed; the full e2e suite: 188 passed, 4 failed, 3 skipped (section-choices and sections-review on both projects: D166's card titles, fixed in D166 by 7d36ca5) |
+| Two independent reviews | on 3c38e4c | two independent reviewers, read-only, each given the code and not the author's conclusions: neither found anything unapproved reaching the employer; both found an expired credential sent and a year of fewer than four digits approved then refused at every run; the first, checkpoints not naming the credential, D159's check not reading section text and a pause test asserting only a stop; the second, a limit stop naming a work entry. Each fixed with its test (c08b283); the rest recorded in D167 |
+| After the reviews | the 22 suites the change touches (JUnit) on c08b283; after ccdfaa9 (the removal runs' fix), the 5 suites holding frozen certifications content | 1,691 passed; then 258 passed |
+| Each part changed in turn | 95 parts of the change each removed or weakened in turn on ffbc299, in a worktree of their own, each with the suites that cover it (JUnit) | 95 of 95 caught: each change made the tests named for its part fail (294 failures among 5,296 tests run). The first pass had misses (e14, g02, g04, g06, g07, g08, g11, g12): expectations corrected, the tamper test strengthened and the date bounds restored (ccdfaa9), then every one rerun |
+| The regression set | `pytest` on 94 files (D166's 93 with `test_workday_certifications.py`; JUnit), in a copy of the branch at ffbc299 (main merged in), with a database and ports of its own | exit 0, 3,409 passed (91 minutes) |
+| The full e2e suite | `npx playwright test` on ffbc299 (main merged in; the records after it change no code) | 191 passed, 1 failed, 3 skipped (14.6m): answer-suggestions on desktop, while other runs loaded this machine; run alone it passed (2 passed, 23.0s) |
+| After its records | the document tests (`test_doc_references.py`, `test_approval_reasons.py`, `test_audit_inventory.py`, `test_deployment_config.py`, `test_account.py`) and `test_workday_certifications.py` (JUnit); `ruff format .`, `ruff check .`, `ruff format --check .` | exit 0; 226 passed in 142 s; ruff formatted nothing, found nothing, and the format check passed |
+| PR CI (#77) on e6015a4 | the four jobs | all four passed; #77 merged (9991ed8, tree as predicted) |
+
 ## Your profile's links fill a Workday-style Websites section (D166, 2026-11-17; local only)
 
 Rank 33 of the automation loop (filling your websites from your profile's links on Workday).
@@ -91,6 +170,8 @@ backend and e2e suites); ruff, tsc and eslint were.
 | The regression set | `pytest` on 93 files (D165's 92 with `test_workday_websites.py`; JUnit), in a copy of the branch at 3e30346 (since then cases added and one redundant check removed: the file is run in full with the records) | exit 0, 3,213 passed (101 minutes) |
 | After its records | the document tests (`test_doc_references.py`, `test_approval_reasons.py`, `test_audit_inventory.py`, `test_deployment_config.py`, `test_account.py`) and `test_workday_websites.py` (JUnit); `workday.spec.ts`; `ruff format .`, `ruff check .`, `ruff format --check .` | first: exit 1, 217 of 218 (the document check: two tests cited by the names they had before the review, and the review's nine new tests not cited: the evidence rows corrected); again: exit 0, 218 passed in 152 s; e2e: 10 passed (desktop and mobile, 1.6 minutes); ruff formatted nothing, found nothing, and the format check passed |
 | PR CI (#75) on 642ef8d | the four jobs | frontend exit 1: 4 of 193 Playwright tests (`sections-review.spec.ts` and `section-choices.spec.ts`, desktop and mobile, found the sections card by D140's fixed title, "Education and work history", which D166's review made the name of what the card holds: "Education" for education alone); the two specs now find it by that heading; locally, those two, `workday.spec.ts` and `profile-edit.spec.ts`: 4 failed before the change, 16 passed after it; tsc and eslint clean. The backend, docker-smoke and execution-compose jobs: see the PR |
+| PR CI (#75) on 7d36ca5 | the four jobs | backend exit 1: 1 of 6,875 (`test_gh_readonly.py::test_overall_deadline_stops_a_slow_page`: the read-only check gave a page load what was left of its overall deadline, and the browser's timer fired a few milliseconds before this process's clock passed it, so a bare TimeoutError was re-raised; not D166's code). Fixed in #76 (a navigation timeout the deadline set is that deadline; a test with this process's clock standing still fails without the fix; the 17 suites that use the read-only check: 799 passed) and ported here as d52880e (`test_gh_readonly.py`: 43 passed) |
+| PR CI (#75) on d52880e | the four jobs | all four passed. #76 merged first (6d5186f, tree as predicted; its CI passed all four jobs on a02b427), then #75 (f927e8f, tree as predicted) |
 
 ## A Workday-style section NoEfforts does not fill is left empty when the page does not mark it required (D165, 2026-11-16; local only)
 

@@ -8655,3 +8655,217 @@ audit-inventory and export-completeness guards are updated and pass.
     only for Websites).
   - A Social Network URLs section (LinkedIn, Facebook, Twitter fields): never read.
   - **Never seen on a real page.**
+
+## D167 — A Workday-style Certifications section is filled from your licences and certifications (2026-11-17)
+
+- **Context:** rank 34 of the automation loop (`docs/automation-loop.md`), the first candidate
+  named after D166. A Certifications section on a Workday-style page was a section of a kind no
+  reader takes: the work-history checkpoint for the whole page (D149's `_work_section`), so no
+  such page could be applied to. Workday's job application templates let an administrator
+  choose the sections an application shows, Certifications among them with Education,
+  Languages, Websites and Work Experience (search-reported, Workday's administrator
+  documentation); the fields of a candidate's Certifications entry were not found. NoEfforts
+  holds your licences and certifications (Profile, "Licences and certifications": a name, an
+  issuer, issued and expiration dates, approved; C16, D69). Local stand-ins only; nothing real
+  was run. No migration, no new state, reason code, gate, permission or retry.
+- **The stand-in** (FIXTURE ASSUMPTION FA12, `fixtures/ats_receiver/workday_like.py`): My
+  Experience may carry a Certifications section built as FA11's Websites section; entry i's
+  controls are Certification `cert[i].name` (typed, required), Certification Number
+  `cert[i].number` (typed, optional), Issued Date `cert[i].issued` and Expiration Date
+  `cert[i].expires` (typed, MM/YYYY, optional). The page's own checks refuse a page whose
+  required section has no entry, an entry without a name, a date not written MM/YYYY, and an
+  issued date after the expiration date. Variants on the wizard: `certifications`,
+  `certifications_required`, `certifications_entry_at_load`, `certifications_parse`,
+  `certifications_hidden_after_typing`, `certifications_added_after_typing`,
+  `certifications_number_after_typing` (once a name is typed the page writes a number into that
+  entry's number box), `certifications_and_experience` and `certifications_and_other_sections`;
+  the single page's `wd_certifications`, `wd_certifications_hidden_after_typing` and (review)
+  `wd_certifications_number_after_typing`; (review) `sends: "latin1_form"` makes either page's
+  form send in ISO-8859-1. A real page may offer Certification as a prompt of the employer's own
+  list; no real Workday Certifications section was observed.
+- **Decided:**
+  - **Capture** (`preparation/workday.py`: `_certifications_section`, `_cert_entry`,
+    `extract_schema`): the Certifications section is read as a certifications section
+    (`SectionSpec(kind="certifications")`, its page and whether the page requires an entry) only
+    where it is built exactly as the stand-in builds it, by D166's rule for the Websites
+    section: one section, within no other, shown and enabled at load, rendered and not inert,
+    within nothing marked required; its heading, entries list and one plain button; its own
+    required mark read (`aria-required="true"` and "Certifications *"), any other mark making it
+    a checkpoint; the entries it holds exactly as its template builds them (`_cert_entry`: its
+    heading, then each box after its label, in order, empty, numbered from 0, no limit, pattern
+    or other attribute); nothing in the form named as one of its entries but theirs (`cert[`),
+    or under its key (`certifications_section`). Anything else is its own required checkpoint:
+    apply on the employer's site. Its entries' controls are never questions; the Work Experience
+    reader leaves it alone.
+  - **What each entry is given** (`structured_sections.resolve_certification_row`): one row per
+    approved licence or certification that has not expired on the day the package is built
+    (review: C16/D69's rule, `current`, as drafts and job fit already read it and as your profile
+    says, "Expired …: not used"; one expiring that day is still sent), newest issued first,
+    undated last, then by record: its name as written (only spaces or a line break: yours to fix);
+    its issued and expiration dates as MM/YYYY, each only when the record holds it (none: not
+    sent, never guessed); an issued date after the expiration date, or (review) a year of fewer
+    than four digits, yours to fix, each message naming the credential; never a number: NoEfforts
+    holds none, and the entry's box for it is left empty and read back empty (`_CERT_NEVER`). The
+    issuer is not sent: the entry does not ask it.
+  - **The package** (`package.py`): a certifications section is frozen as the other sections are;
+    a section the page requires with none approved blocks approval (`SECTION_REQUIRED`); one it
+    does not require is frozen with no rows, nothing entered. Greenhouse never plans one, and
+    frozen content holds a row only as resolution writes it (`greenhouse_sections._cert_row_ok`).
+    Because an expired one is never sent, the package depends on the day it is built, as a draft
+    does: one that lapses between approval and the run is not in the package the gate builds, so
+    the approval is out of date and the attempt stops before anything is entered (review).
+    `SCHEMA_VERSION` stays 3: no package built before D167 changes (a form with a Certifications
+    section was a checkpoint, never approvable).
+  - **The review page** shows the rows (Certification, Issued, Expires) in a card named by what
+    it holds, with a note that no certification number is sent, a date your record does not hold
+    is not sent, and an expired one is not sent at all; the version diff names a row added,
+    removed or changed. Adding, editing, approving or deleting a credential retires an approval
+    of a package that sends a certifications section at once (`profiles/router.py`, D140's rule).
+  - **At run time** (`workday_sections`, EntryKind `certifications`, prefix `cert`): each entry
+    added by the section's button, its name and dates typed and read back, reported as a
+    disclosure at once (D137); the number box never filled and read back empty, so a number the
+    page writes stops the attempt before its page is sent; the stops of D163 and D166 name your
+    licences and certifications, and (review) so does a box's limit at focus (D162), as it now
+    names your websites. (Review) D159's character-set check reads what sections send (typed
+    text and a chosen option's value), so a name holding a character outside ASCII on a form
+    sending ISO-8859-1 stops the attempt before anything is entered, as an answer would; work
+    entries' text was outside that check before (D149).
+- **What an approved run now does differently:** a Workday-style page with a Certifications
+  section can be applied to: your current approved licences and certifications are sent there
+  (on the stand-ins); before, the whole page was the work-history checkpoint.
+- **Reviews:** two independent reviews of the first version (3c38e4c), neither finding anything
+  unapproved reaching the employer.
+  - **Both found:** an expired credential was sent, while drafts, job fit and your profile leave
+    it out ("not used"); and a year of fewer than four digits (a typo in the profile's date box)
+    resolved, was approved, and then every run refused the frozen date (measured: `failed_safe`,
+    nothing telling you about the year). Fixed: an expired one is never sent (above); such a
+    year is yours to fix, here and in work history's and education's shared date field.
+  - **The first found:** a checkpoint did not say which credential (fixed: each names it); D159's
+    character-set check did not read section text (fixed, above); the pause test asserted only a
+    stop (fixed here and in D166's test: the pause itself is checked); adding or approving a
+    credential after approval, the single page's number case, and the order among equal dates
+    were untested (tests added).
+  - **The second found:** the same expired-credential and short-year findings; a stop at a box's
+    limit named a work entry (fixed: it names the section); the wizard stand-in ignored the
+    latin1 switch (fixed).
+  - **Both noted, kept:** an empty entry already on the page with no approved credential is
+    approvable and every run stops before anything is entered (D149's rule: NoEfforts never
+    removes an entry). The first also noted, inherited from D166: a section inside a closed
+    `<details>` is read, and a run would stop when it cannot click the section's button (on the
+    wizard after page 1 was sent; reasoned, not measured).
+  - **The removal runs** (each part changed in turn): 95 of 95 caught: each change made the tests named for its part fail (294 failures among 5,296 tests run). The first pass had misses (e14, g02, g04, g06, g07, g08, g11, g12): expectations corrected, the tamper test strengthened and the date bounds restored (ccdfaa9), then every one rerun
+- **Not built:**
+  - Leaving out one credential for one application: every current approved one is sent.
+  - A Certification chosen from the employer's own list (a prompt): never read, the page stays a
+    checkpoint.
+  - A page that requires the number or a date without marking it in its markup: NoEfforts
+    leaves it empty, and the page's own checks refuse its Next (its draft written first, FA3) or
+    the final click. A limit on an entry's box: a checkpoint.
+  - The issuer: the entry does not ask it.
+  - A required mark only a style sheet or the page's script shows.
+  - **Never seen on a real page.**
+
+## D168 — An owner's console: one application traced from start to finish, every switch and why; sole-owner mode (2026-11-17)
+
+- **Context:** the owner's words (2026-11-17): "Add a debugger to the automatic job application
+  process. Assume I am the owner; treat any account I use new or existing as the owner. Every
+  account should include all features, such as auto application, submission, auto filling,
+  searching, and more. Consider me the sole owner of this software for now. I want to review the
+  entire process from start to finish. Provide access to all functions, including beta, test, or
+  production settings. Everything should be enabled." D113 and D114 had already turned on, by
+  default outside tests, every switch that needs no credential (Freehire discovery, the
+  Greenhouse pilot's switch, the standing rule, the inbox, employer boards) and served every
+  account; what stayed the named owner's was the mailbox and the standing rule's default (on
+  only for an account named in `NOEFFORTS_LIVE_OWNER_EMAILS`, off for every other until it
+  chose). Nothing showed, in one place, why a step did or did not happen.
+- **Decided:**
+  - **Sole-owner mode** (`Settings.sole_owner`, `NOEFFORTS_SOLE_OWNER`; on by default outside
+    tests, `_d113_defaults`, off in tests; `.env.example`, `docker-compose.yml`): every account
+    on the server is served (`accounts.named`) and is the owner's (`accounts.owner`):
+    - the standing rule is on for each account until that account pauses it, and the rule's
+      worker examines every account;
+    - **one daily cap for all of them** (`autoapply.cap_used`): the owner's cap counts every
+      account's approvals, from the count to the approval one account's step at a time (a
+      transaction lock taken after the account's own lock and before any row lock); each
+      account's page shows that count ("across every account");
+    - the Gmail features (`inbox.is_inbox_owner`): each account may connect Gmail from the app
+      (D128) and use the code and application-email features, **reading only a mailbox it
+      connected itself**: the server's own token file (connect.py's `inbox_token_file`) is read
+      only for the account named in `inbox_owner_emails` (`named_inbox_owner`,
+      `owner_token_file`). A reader is built only on the file it is given (no fallback), and the
+      file is looked up once per read, so one that disappears mid-read (a disconnect at that
+      moment) reads nothing, never the server's mailbox in its place (`check`, `fill_codes`,
+      `inbox_tick`);
+    - each account still sees only its own records.
+  - **No other gate opens with it.** Real submission still needs the owner's approval of the
+    exact package or the standing rule within its limits (every answer from approved facts and
+    answers, rehearsal first per employer path, the daily cap), production mode, container
+    isolation and the owner's recorded permission (`app/core/authorizations.py`); a code from
+    mail still needs the recorded permission. Every recorded permission ended on 2026-11-06, and a
+    request for features is not a permission (the register's own rule): none was added, so
+    nothing real is read, opened, filled or sent until the owner records one in their own words,
+    with its steps, end date and limit. AI drafting, email reminders, connecting Gmail and Google
+    Drive still need their credentials (and drafting its budget). Anyone who can reach the server
+    can sign up and is then treated as the owner: the console warns, and the shipped Compose file
+    binds to 127.0.0.1. (The next permission recorded for the pilot must say whose packages it
+    covers: in sole-owner mode, every account's, and each account's attempts count against its
+    one shared limit, D112.)
+  - **The console** (`app/modules/debug`; app-only, an API token refused; read-only, tested: no
+    row anywhere changes; every query scoped to the signed-in account; another account's
+    application a 404):
+    - `/debug/system` (the Debugger page, from Account): each switch as it applies to this
+      account, judged by the gate that decides it: on or off, working or not, why not in that
+      gate's words (the pilot's, including its attempt limit used and a permission that covers
+      rehearsals but not submitting; the standing rule's, telling "never turned on" from
+      "paused"; the inbox's, including both of the account's switches off, a revoked token, and
+      "connect your own Gmail"; connecting Gmail for an account not the owner's; AI drafting by
+      `provider_for`, including a model NoEfforts cannot price; the stand-ins outside the test
+      environment); what a feature still needs (a setting's name, never its value); the
+      warnings: sole-owner mode, a restore holding the database (D147), no recorded permission
+      covering a real employer's site, nothing permitting a real mailbox to be read (the
+      register and the account's own consent in the app, D127); the rules that always apply.
+      **To the server's owner only** (every account in sole-owner mode): the recorded
+      permissions in the owner's own words with their steps, end dates, attempt limits and use,
+      and state as `covers` reads it (active, ended, not yet started); which settings are
+      missing; how the server runs. Every account sees its own consents in the app.
+    - `/debug/activity`: the newest steps of every kind across the account's jobs (the
+      standing rule's decisions, status changes, forms read, approvals, attempts queued and
+      ended, rehearsals named as such, pauses, emails, AI drafts, and at most 25 postings found),
+      by the moment, each named by its job and linked to its application's trace; it reads only
+      the columns it shows.
+    - `/debug/applications/{id}` (Process trace; "Debug this application" on the review page):
+      the job's arrival and where it was found; each form read (its checkpoints as
+      `form_checkpoint` decides them, a location search's value the page sets, the optional
+      controls left empty and an optional phone left blank); each package (answers as the review
+      page shows them, never their stored value; its destination, documents and consents); AI
+      drafts (never their text); approvals and their expiry; the standing rule's decisions in its
+      words; status changes; each attempt (a rehearsal named by its approval's scope, whatever
+      came of it; its events, evidence, waits, queue messages, and its rehearsal record with
+      whether it still holds or was withdrawn); pauses and how each ended; emails; the audit log;
+      all in one timeline ordered by the moment, never by the text of a time.
+  - **Never served:** a verification code, a token, key or password (only whether a setting is
+    set), a keyed reference (the audit log's `ref:v2:`, an attempt's path, an email's message or
+    thread; every stored JSON value passes the data export's scrubbing, `export._scrub`), an
+    outcome's private note (the application's own page shows it), an email's or a draft's text.
+    There is no screenshot, trace or raw page to show: execution keeps none (CLAUDE.md).
+- **Not changed:** CLAUDE.md's rules, every gate but the standing rule's default and cap scope,
+  `SCHEMA_VERSION`; no migration, state, reason code, permission or retry.
+- **Reviews** (two independent reviewers, read-only, each given the code and not the author's
+  conclusions; on df08d96):
+  - **Security:** a mailbox read could fall back to the server's token file for an account in
+    sole-owner mode whose own file vanished between the check and the read (`reader("")`), so
+    it could read the owner's mail; "every gate unchanged" was not true (the cap counted per
+    account, so more accounts meant more approvals a day against one shared permission); tests
+    that would pass with their protection removed; the recorded permissions and the list of
+    missing settings went to every account; the console's scrubbing was weaker than the
+    export's; the docs. Each fixed, with its test (92e9b1a, 61e1c83).
+  - **Correctness:** the warning said no real mailbox is read while an account's own consent
+    allowed it; the pilot and the rule read "working" with the permission's attempt limit used;
+    a failed rehearsal read as an attempt; the stand-ins read "working" outside tests; the new
+    nav entry was half cut off on every desktop width (moved to the Account page); the activity
+    list loaded every job and could be drowned by one import; Gmail, drafting, the inbox and the
+    rule's off state named the wrong cause; the timeline sorted the text of times; missing
+    steps; legacy outcome rows. Each fixed, with its test, in the same commits.
+  - **Kept:** registration stays open (the owner's words cover new accounts), with the warning;
+    the cap's lock across accounts is not exercised by a test (a race between two workers).
+- **Each part is needed:** 57 changes on 61e1c83, one at a time (a worktree of its own), each run with the tests named for its part: every one fails them (74 failures among the 74 tests run). The trace's account check alone was not caught at first: the trace checks the account twice (the application's and its job's), so removing one leaves the other; removed together, all three named tests fail.
