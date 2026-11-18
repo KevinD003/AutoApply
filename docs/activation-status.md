@@ -194,6 +194,11 @@ What happens with it:
 5. The result shows on the application: "rehearsed", or the stop and its reason. Report back
    only the outcome and the reason code. Never the page, the employer or your data.
 6. Your documents and typed answers reached the employer's page. Nothing was submitted.
+7. With your standing rule on (D113), it does the same by itself for employers it has not
+   rehearsed with yet, and then holds each application: nothing is submitted until
+   permission 4 is recorded, and the Tracker's card and each such application say so
+   (D171). Once permission 4 is recorded it submits them by itself; pause it first if it
+   must not.
 
 ## 7. Separately authorized submission plan (permission 4 recorded, D112; needs a rehearsal that holds)
 
