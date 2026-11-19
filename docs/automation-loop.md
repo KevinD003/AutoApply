@@ -65,6 +65,7 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 | D170 a paused application is the rule's to continue, waits for it (and why), or is yours for good | merged with D169 (#79, 76178ed, tree as predicted); its PR CI passed all four jobs on ecb50b4 |
 | D171 with a permission for rehearsals only, the rule rehearses and stops before submitting, and says so | merged (#80, 1864450, tree as predicted); its PR CI passed all four jobs on 51132e8 |
 | D172 each recorded permission says whose approvals it covers (yours, one at a time, or your standing rule's), checked at each gate | merged (#81, ad43188, tree as predicted); its PR CI passed all four jobs on cdb4671 |
+| D173 the owner's permission of 2026-11-18 recorded: all four steps, yours and your standing rule's, no end date, no attempt limit | on its branch `owner-permission` (from main at ad43188); its PR is next |
 | Outcome state | Not complete. Every item below is at most **synthetic-fixture**. Live verification is **blocked externally** (see Blockers) |
 
 ## Acceptance matrix (2026-11-06)
@@ -385,6 +386,15 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
     adapter's three, with further weaknesses. Fixed (26e6cdc, 30766a5), each with a test;
     the rest recorded in D152. The receiver's reset now clears D145's ticker, which went on
     changing the pages of later tests.
+
+- **D173 (on its branch `owner-permission`).** The owner's permission of 2026-11-18, recorded:
+  - all four pilot steps, for packages the owner approves in the app and packages the
+    standing rule approves, from 2026-11-18, with no end date and no attempt limit, in the
+    owner's words ("All four (Recommended)", "Both (Recommended)", "Unlimited", "Until I
+    turn off");
+  - the console says "no end date (until you withdraw it)" and "no attempt limit";
+  - the activation guide's state, checklist and plans say what it lets happen and how to
+    stop it; the inbox is not part of it (D117 ended).
 
 - **D172 (merged, #81).** Each recorded permission says whose approvals it
   covers, yours one at a time or your standing rule's, and each gate asks for that approver:
@@ -827,6 +837,8 @@ it (continues, waits and why, or yours for good) and keeps what is yours.
 recorded permission covers rehearsals only, and says so wherever it is shown.
 **D172** (#81) records whose approvals each permission covers and checks
 it at each gate.
+**D173** (on its branch `owner-permission`) records the owner's permission of 2026-11-18:
+all four steps, both approvers, no end date, no attempt limit.
 Every ranked
 slice left after it waits on an owner decision; next, the candidates under Exact next
 action.
@@ -923,6 +935,10 @@ action.
   wait for the page to settle; the check after filling stops such an attempt), one marked
   required only by a label's asterisk, one a later wizard page reveals on an earlier one,
   several levels of follow-ups, and anything real.
+- **D173:** on its branch `owner-permission`. Locally: the register's, the console's and the
+  inbox's tests, the removal runs, the suites that read the changed docs and the console's
+  browser spec (Tests run below). Not tested: the owner's server running it, and anything
+  real (nothing is run from this repository).
 - **D172:** merged (#81, ad43188, tree as predicted); its PR CI passed all four jobs on
   cdb4671. Locally: the new tests (the receiver's ledger as the
   oracle), the suites the change touches, the removal runs, the whole backend suite and the
@@ -1378,6 +1394,10 @@ action.
 | D172, the full e2e suite on 9200093 | `npx playwright test` | exit 0; 200 passed, 3 skipped (15.2 minutes) |
 | D172, the whole backend suite on 9200093 (two halves at once) | `pytest` on all 179 test files (JUnit) | both halves at once, in this rebuilt container (a fresh clone, its newer browser build linked for Playwright 1.56): half A 2,709 passed, 4 failed; half B 4,443 passed, 11 failed; none in D172's tests. Three broker-restart tests waited on the worker's log under the load of both halves; one test's check that a port number is never shown met a random identifier containing it (rare; not D172's); the browser runner's 11 ran before the browser build was linked. Each failing file run again alone: 14 and 18 passed |
 | D172, its PR's CI (#81) on cdb4671: the four jobs | all four passed (the backend job in 126 minutes); #81 merged (ad43188, tree as predicted) |
+| D173, the owner's permission recorded (95a8573 and the change after it): the register's, the console's and the inbox's tests | `test_authorizations.py`, `test_debug_console.py`, `test_inbox.py` (JUnit) | 102 passed |
+| D173, the entry's parts changed in turn | 7 changes (an end date, a limit, yours only, the rule's only, a later start, no submit, one answer left out) | each caught |
+| D173, the suites that read the changed docs, with the touched ones | seven files (JUnit) | exit 0; 352 passed |
+| D173, the console's browser spec; its two new phrases removed in turn | `debugger.spec.ts` (desktop and mobile) | 6 passed; each removal caught on its own assertion |
 
 ## Failed approaches and rejected designs
 
@@ -1465,11 +1485,13 @@ action.
 
 ## Blockers (external; each blocks one action, not the local work)
 
-- **Recorded permissions end 2026-11-06:** the Greenhouse pilot (read, open, disclose, submit; 5
-  shared passes) and mailbox codes (`backend/app/core/authorizations.py`). From then on, every real
-  capture, rehearsal, submission and D113 action is refused until the owner records new words.
-- **A real Greenhouse posting that today's rules can capture**, chosen by the owner, plus a
-  single-use disclose-only permission. The only posting observed so far would be refused at capture.
+- **Recorded permissions:** D112 to D114 (the Greenhouse pilot; 5 shared passes) and the mailbox
+  codes (D117) ended on 2026-11-06. Since 2026-11-18 the owner's words (D173) cover the pilot's
+  four steps for both approvers, with no end date and no attempt limit
+  (`backend/app/core/authorizations.py`). Mailbox codes stay unauthorized: a code step waits
+  for the owner.
+- **A real Greenhouse posting that today's rules can capture**, chosen by the owner (D173
+  covers its steps). The only posting observed so far would be refused at capture.
 - **The owner's decision on Greenhouse's invisible reCAPTCHA**, before any first real submission:
   - let the page's own scripts run and stop only on a visible challenge; or
   - keep them blocked and treat each submit as "code expected or outcome unknown".

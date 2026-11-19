@@ -1,9 +1,11 @@
 """D103: the register of operational authorizations (app/core/authorizations.py).
 
-It holds only what the owner actually authorized: since D112, one entry, the Greenhouse pilot's
-four steps through 2026-11-06, at most 5 attempts. No setting, deployment file or environment
-variable can add to it: it is reviewed source code, read by every gate that needs it (the inbox's
-uses, the Greenhouse pilot's steps). conftest empties it for every other test."""
+It holds only what the owner actually authorized: D112 to D114 (the Greenhouse pilot's four steps
+through 2026-11-06, at most 5 attempts), D117 (verification codes, through 2026-11-06), and since
+2026-11-18 D173 (the four steps for both approvers, no end date, no attempt limit). No setting,
+deployment file or environment variable can add to it: it is reviewed source code, read by every
+gate that needs it (the inbox's uses, the Greenhouse pilot's steps). conftest empties it for every
+other test."""
 
 import ast
 from datetime import date
@@ -27,12 +29,24 @@ def _assigned(name: str) -> ast.expr:
 
 def test_the_shipped_register_holds_exactly_the_owners_recorded_words():
     """D103 recorded nothing; D112 recorded the owner's permission for the Greenhouse pilot, and
-    D113 the same for the owner's standing rule to apply automatically.
+    D113 the same for the owner's standing rule to apply automatically; D173 the four steps again
+    from 2026-11-18, for both, with no end date and no attempt limit, as the owner chose.
     Changing the register means changing this test with the owner's words in
     docs/decisions.md, never a setting."""
     value = _assigned("RECORDED")
-    assert isinstance(value, ast.Tuple) and len(value.elts) == 4, ast.unparse(value)
-    entry, auto, everyone, codes = SHIPPED_REGISTER
+    assert isinstance(value, ast.Tuple) and len(value.elts) == 5, ast.unparse(value)
+    entry, auto, everyone, codes, ongoing = SHIPPED_REGISTER
+    # D173: all four steps, yours and your standing rule's, "Unlimited", "Until I turn off".
+    assert (ongoing.what, ongoing.decision, ongoing.actions) == (
+        a.GREENHOUSE_PILOT, "D173", {"read", "open", "disclose", "submit"})  # fmt: skip
+    assert (ongoing.given_on, ongoing.ends_on, ongoing.max_attempts, ongoing.counted_from) == (
+        date(2026, 11, 18), None, None, None)  # fmt: skip
+    assert ongoing.approvers == a.APPROVERS
+    for chosen in ('"All four (Recommended)"', '"Both (Recommended)"', '"Unlimited"',
+                   '"Until I turn off"'):  # fmt: skip
+        assert chosen in ongoing.words, chosen
+    assert "one at a time" in ongoing.data and "standing rule" in ongoing.data
+    assert "Greenhouse" in ongoing.data
     # D117: the owner's own mailbox, verification codes only, until the pilot's end date.
     assert (codes.what, codes.decision, codes.actions, codes.ends_on, codes.max_attempts) == (
         a.INBOX, "D117", {"read_codes", "enter_codes"}, date(2026, 11, 6), None)  # fmt: skip
@@ -74,6 +88,19 @@ def test_the_owners_permission_holds_only_on_its_days_and_never_inside_another_t
         date(2026, 11, 1),
     )
     assert a.limit(a.GREENHOUSE_PILOT, "disclose", date(2026, 11, 7), approver=a.ANY) is None
+    # D173: from 2026-11-18, every step for both approvers, with no end date and no limit; never
+    # the day before, and never the inbox.
+    for step in ("read", "open", "disclose", "submit"):
+        for who in (a.OWNER, a.RULE, a.ANY):
+            assert not a.covers(a.GREENHOUSE_PILOT, step, date(2026, 11, 17), approver=who)
+            assert a.covers(a.GREENHOUSE_PILOT, step, date(2026, 11, 18), approver=who)
+            assert a.covers(a.GREENHOUSE_PILOT, step, date(2036, 11, 18), approver=who)
+    for who in (a.OWNER, a.RULE, a.ANY):
+        assert a.covers_all(a.GREENHOUSE_PILOT, ("read", "open", "disclose", "submit"),
+                            date(2026, 11, 18), approver=who)  # fmt: skip
+        assert a.limit(a.GREENHOUSE_PILOT, "disclose", date(2026, 11, 18), approver=who) is None
+    for action in a.ACTIONS[a.INBOX]:
+        assert not a.covers(a.INBOX, action, date(2026, 11, 18), approver=a.ANY)
 
 
 def test_no_configuration_can_supply_an_authorization():
@@ -151,7 +178,7 @@ def test_d172_the_shared_limit_counts_from_d112s_day_whoever_approves(monkeypatc
     """D113's and D114's words share D112's limit: counted from D112's day for every approver, so
     no attempt of that day is left out; between equal limits, the earliest-counted one."""
     monkeypatch.setattr(a, "RECORDED", SHIPPED_REGISTER)
-    _, auto, everyone, _ = SHIPPED_REGISTER
+    _, auto, everyone, *_ = SHIPPED_REGISTER
     assert auto.counted_from == everyone.counted_from == date(2026, 11, 1)
     for day in (date(2026, 11, 2), date(2026, 11, 3), date(2026, 11, 6)):
         for who in (a.OWNER, a.RULE, a.ANY):

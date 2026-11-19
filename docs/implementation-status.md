@@ -54,6 +54,38 @@ compact summary built from the same consolidation, so list and detail never disa
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
 
+## The owner's permission of 2026-11-18, recorded (D173, 2026-11-19; local only)
+
+The owner's words are in D173 (docs/decisions.md): all four pilot steps, for both approvers,
+"Unlimited" and "Until I turn off". Product changes:
+
+- `app/core/authorizations.py`: one entry, D173. It covers the four steps from 2026-11-18, for
+  both approvers (`APPROVERS`), with no end date (`ends_on=None`) and no attempt limit
+  (`max_attempts=None`). The docstring says what is recorded.
+- `frontend/src/app/(app)/debug/page.jsx`: a permission with no end date says "no end date
+  (until you withdraw it)"; a pilot permission with no limit says "no attempt limit".
+- Docs:
+  - `docs/activation-status.md`: the feature table, the readiness checklist (computed on
+    2026-11-19), §5, §6 and §7;
+  - `docs/remaining-work.md` and `docs/automation-loop.md`.
+
+No migration, no new state, `SCHEMA_VERSION` unchanged, and no gate changed. Nothing was run
+against a real page or mailbox: the permission acts only on the owner's server, running this
+code with the pilot switched on (§5).
+
+Not run locally: `scripts/validate.sh all`, the whole backend suite and the full e2e suite (CI
+runs both). The checks below, ruff, tsc and eslint were run.
+
+| Check (branch `owner-permission`, from main at ad43188) | Command | Result |
+|---|---|---|
+| The register's, the console's and the inbox's tests | `test_authorizations.py`, `test_debug_console.py`, `test_inbox.py` (JUnit) | 102 passed |
+| The entry's parts changed in turn | 7 changes, each run with the register's tests and the console's shipped-register test: an end date, a limit, your own approvals only, the rule's only, a later start, no submit, one answer left out of its words | each caught (3, 3, 3, 3, 2, 2 and 1 tests failing) |
+| The suites that read the changed docs, with the register's, the console's and the inbox's | `test_authorizations.py`, `test_greenhouse_live.py`, `test_package_contract.py`, `test_provider_admission.py`, `test_provider_contracts.py`, `test_debug_console.py`, `test_inbox.py` (JUnit) | exit 0; 352 passed |
+| The console's browser spec | `debugger.spec.ts` (desktop and mobile) | 6 passed |
+| Its two new phrases removed in turn | the spec's permission test (desktop and mobile) | each caught on its own assertion (2 failures each) |
+| Readiness, computed against the shipped register on 2026-11-19 | `readiness.summary()` | 1 of 7: condition 6 (`pilot_gate`) met |
+| Lint and types | `ruff check .`, `ruff format --check .`, `npx tsc --noEmit`, `npm run lint` | clean |
+
 ## Each recorded permission says whose approvals it covers (D172, 2026-11-18; local only)
 
 A follow-up of D171's kept item (an approver scope per recorded permission), for the owner's
