@@ -22,14 +22,17 @@ to apply automatically approves.
 Recorded (2026-11-02, D114): the same steps, end and shared limit for every account's own packages.
 Recorded (2026-11-02, D117): the inbox's verification codes (read and enter), for the owner's own
 mailbox and the owner's own applications, through 2026-11-06. Application emails stay unread.
+Recorded (2026-11-18, D173): the Greenhouse pilot, all four steps, for packages the owner approves
+in the app and packages the owner's standing rule approves, with no end date and no attempt
+limit: it holds until the owner withdraws it. The inbox is not part of it.
 
 * `inbox`: reading the owner's mailbox (D101). The feature was requested (2026-10-31). D117
   authorizes verification codes only (read the code email, enter its code); application emails
   are not read. Entering a code you type yourself (the checkpoint) is unaffected.
 * `greenhouse_pilot`: the Greenhouse pilot's separate permissions (D102,
   docs/live-pilot-gate.md §2): 1 read the public job post, 2 open the application page,
-  3 disclose (fill and upload), 4 submit. None has been given for any posting, so nothing is
-  read, opened, disclosed or submitted through the pilot.
+  3 disclose (fill and upload), 4 submit. Only the entries below give them, and never for a
+  posting by name: each posting is named by the approval of its exact package (D57).
 
 A permission for one action never implies another: `disclose` does not include `submit`, and
 `read` does not include `enter_codes`. Each still needs the per-application approval of the
@@ -166,6 +169,28 @@ RECORDED: tuple[Authorization, ...] = (
         # The owner's words set no end; read with the pilot permission the codes serve.
         ends_on=date(2026, 11, 6),
         approvers=APPROVERS,  # "the greenhouse applications", whoever approved them
+    ),
+    Authorization(
+        what=GREENHOUSE_PILOT,
+        decision="D173",
+        given_on=date(2026, 11, 18),  # "starting today, 2026-11-18"
+        words=(
+            "Asked which steps on real Greenhouse jobs NoEfforts may take, whose approvals, how "
+            "many and until when (the §4 form's blanks), the owner chose \"All four "
+            '(Recommended)", "Both (Recommended)", "Unlimited" and "Until I turn off".'
+        ),
+        actions=frozenset({"read", "open", "disclose", "submit"}),
+        data=(
+            "only what each approved package contains: packages the owner approves in the "
+            "NoEfforts app one at a time, and packages the owner's standing rule to apply "
+            "automatically approves (fully answered packages only, a rehearsal first on each "
+            "employer's path, within its daily cap), for real Greenhouse job posts"
+        ),
+        # "Until I turn off": no end date; it holds until the owner withdraws it (a reviewed
+        # change removing this entry, then a restart: docs/activation-status.md §8).
+        ends_on=None,
+        approvers=APPROVERS,  # "Both (Recommended)": your own approvals and your standing rule's
+        max_attempts=None,  # "Unlimited"
     ),
 )
 

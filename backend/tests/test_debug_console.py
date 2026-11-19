@@ -403,8 +403,10 @@ def test_only_the_owner_sees_the_permissions_and_what_each_switch_needs(
 def test_the_shipped_permissions_are_shown_as_the_gates_read_them(api, monkeypatch):
     """The owner's recorded permissions as reviewed source holds them (conftest empties the
     register in every test; here it is the shipped one): each with its words, its end and its
-    state as `authorizations.covers` decides it today; once every one has ended, the warnings
-    that nothing real is read, opened, filled or sent and no real mailbox is read."""
+    state as `authorizations.covers` decides it today. D112 to D114 and D117 ended on 2026-11-06;
+    D173 holds from 2026-11-18 with no end date and no attempt limit, so there is no warning
+    that nothing real is read, opened, filled or sent, and the one that no real mailbox is read
+    stays (D173 is not the inbox's)."""
     from tests.conftest import SHIPPED_REGISTER
 
     monkeypatch.setattr(authorizations, "RECORDED", SHIPPED_REGISTER)
@@ -418,13 +420,18 @@ def test_the_shipped_permissions_are_shown_as_the_gates_read_them(api, monkeypat
         assert p["active"] is any(
             authorizations.covers(a.what, x, approver=authorizations.ANY) for x in a.actions
         )
-    pilot = [p for p in v["permissions"] if p["what"] == "greenhouse_pilot"]
-    assert pilot and all(p["ends_on"] == "2026-11-06" for p in pilot)
-    if date.today() > date(2026, 11, 6):
-        assert all(p["state"] == "ended" for p in v["permissions"])
-        assert any(w.startswith("No recorded permission covers a real employer's site (the last "
-                                "ended on 2026-11-06)") for w in v["warnings"])  # fmt: skip
-        assert any(w.startswith("Nothing permits reading a real mailbox") for w in v["warnings"])
+    pilot = {p["decision"]: p for p in v["permissions"] if p["what"] == "greenhouse_pilot"}
+    assert {d: p["ends_on"] for d, p in pilot.items()} == {
+        "D112": "2026-11-06", "D113": "2026-11-06", "D114": "2026-11-06", "D173": None}  # fmt: skip
+    assert (pilot["D173"]["max_attempts"], pilot["D173"]["attempts_used"]) == (None, None)
+    assert pilot["D173"]["approvers"] == ["owner", "rule"]
+    assert date.today() >= date(2026, 11, 18)  # D173's day has come
+    states = {p["decision"]: p["state"] for p in v["permissions"]}
+    assert states == {"D112": "ended", "D113": "ended", "D114": "ended", "D117": "ended",
+                      "D173": "active"}  # fmt: skip
+    nothing_real = "No recorded permission covers a real employer's site"
+    assert not any(nothing_real in w for w in v["warnings"])
+    assert any(w.startswith("Nothing permits reading a real mailbox") for w in v["warnings"])
 
 
 def test_a_permission_running_or_not_yet_started_is_shown_as_such(api, monkeypatch):

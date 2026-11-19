@@ -9351,3 +9351,74 @@ audit-inventory and export-completeness guards are updated and pass.
 
   Each finding was fixed with its test (23cef64, 26dc02c) or kept above with the reason.
 - **Each part is needed:** 49 backend changes on 26dc02c, one at a time (two worktrees of their own at once), the 23 D172 tests run each time: each of the 49 fails the tests named for it (129 failures among the 1,127 tests run); the route's change again on 9200093 after its fix: caught. Its frontend parts, each spec run (desktop and mobile) with the file changed: each of the 8 caught on its own assertion (the email's wrapping on a phone only). Before the reviews (9d3d8f7): 35 changes, each of the 34 named caught; the gate's own check of steps 2 and 3 had no test of its own (the runner's check refused first): it has one now.
+
+## D173 — The owner's permission of 2026-11-18, recorded: all four steps, yours and your standing rule's, no end date, no attempt limit (2026-11-18)
+
+- **The owner's words (verbatim):** the owner sent these questions in chat with the answers
+  chosen, beside a screenshot of a real Greenhouse job refused with `live_not_authorized`. The
+  questions were asked outside this repository's sessions; the example posting's employer is
+  left out of git (§4, D95), marked […].
+  - "Which steps on real Greenhouse jobs (e.g. […]) do you permit NoEfforts to do?": "All four
+    (Recommended)": "Read the job post, open its page, fill it in and upload your documents
+    (rehearsal, stops before submitting), then submit once after that employer's rehearsal
+    held."
+  - "Whose approvals should the permission cover?": "Both (Recommended)": "Packages you approve
+    yourself in the app, and packages your automatic-apply rule approves (fully answered only,
+    rehearsal first, daily cap 5)."
+  - "At most how many real applications (rehearsals and submissions both count) may pass through
+    under this permission?": "Unlimited".
+  - "Until when should the permission hold (starting today, 2026-11-18)?": "Until I turn off".
+- **Recorded** (`app/core/authorizations.py`, one entry, the register's quote: the owner chose
+  "All four (Recommended)", "Both (Recommended)", "Unlimited" and "Until I turn off"):
+  - **Steps:** all four pilot steps: 1 read, 2 open, 3 disclose (the rehearsal), 4 submit.
+  - **Whose approvals (D172):** both: packages the owner approves in the app, one at a time, and
+    packages the owner's standing rule to apply automatically approves.
+  - **Postings and data:** real Greenhouse job posts, each named only by the approval of its
+    exact package (in the app, never in git); only what each approved package contains.
+  - **Starts:** 2026-11-18, the day the question names.
+  - **Ends:** none ("Until I turn off"). It holds until the owner withdraws it: a reviewed change
+    removes the entry, then the API, the worker and the scheduler restart
+    (docs/activation-status.md §8). Until then, the owner can stop every real step by switching
+    the pilot off (`NOEFFORTS_LIVE_GREENHOUSE_ENABLED=false`, then a restart), and the standing
+    rule's own applying by pausing it on the Tracker's card.
+  - **Limit:** none ("Unlimited"). No attempt limit is checked at the disclosure gate under it.
+    The standing rule keeps its own daily cap (`NOEFFORTS_AUTO_APPLY_DAILY_CAP`, 5 by default).
+  - **Not part of it:** the inbox. D117 (verification codes) ended on 2026-11-06, so a code step
+    waits for the owner to type the code.
+- **What it lets happen**, only on the owner's server running this code with the pilot switched
+  on (§5):
+  - The owner's own approvals: read, open, and rehearse each package approved in the app. Once
+    that employer's path's rehearsal held, the owner's "Submit once" submits it.
+  - The standing rule (on by default, D168) reads the posts the owner adds or NoEfforts finds,
+    and approves fully answered packages. It rehearses first on each employer's path, then
+    submits by itself, at most its daily cap a day, with no end date. Pausing it on the
+    Tracker's card stops that.
+- **Unchanged:** every gate:
+  - each package needs its approval, by the owner or by the rule;
+  - a rehearsal first on each employer's path (E6);
+  - anything not understood stops the attempt;
+  - no retry after the final click, and an unknown outcome is quarantined
+    (`submitted_unconfirmed`);
+  - the server must be switched on, in production mode, with container isolation and the
+    owner's account named (§5).
+
+  No posting was read, opened, filled or submitted from this repository.
+- **Supersedes:** nothing. D112 to D114 and D117 ended on 2026-11-06 and stay recorded as they
+  were. D172's kept note that every pilot entry recorded since D112 sets a limit no longer
+  holds: D173 sets none. With no capped entry in force, no gate counts attempts, so D172's kept
+  race between a capped and an uncapped approver cannot arise; it could again if a capped entry
+  were recorded beside this one.
+- **The console** shows it as active, with "no end date (until you withdraw it)" and "no
+  attempt limit". While it holds, the warning that nothing real is read or sent is not shown;
+  the mailbox warning stays.
+- **Tests:**
+  - conftest still empties the register in every test.
+  - `test_authorizations.py` checks the entry against these words: its first day, both
+    approvers, no end and no limit, and that the inbox is not covered.
+  - `test_debug_console.py` checks that the console shows it active, with no end and no limit,
+    and without the "nothing real" warning.
+  - `debugger.spec.ts` checks the console's words for a permission with no end date and no
+    attempt limit.
+- **Readiness:** computed against the real register on 2026-11-19: 1 of 7. Condition 6 is met
+  by this entry while it holds; the other six still need their own evidence (a real rehearsal,
+  a real submission, the chosen posting's controls).

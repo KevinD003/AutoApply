@@ -123,9 +123,10 @@ export default function DebuggerPage() {
                     </p>
                     <p className="mt-1 text-xs text-ink-faint">
                       Recorded in {p.decision}, given on {p.given_on}
-                      {p.ends_on ? `, ends ${p.ends_on}` : ""} · steps: {p.actions.join(", ")} · for {approvers(p)}
-                      {p.max_attempts != null &&
-                        ` · attempts: ${p.attempts_used ?? 0} of ${p.max_attempts} used (every account's, whoever approved them)`}
+                      {p.ends_on ? `, ends ${p.ends_on}` : ", no end date (until you withdraw it)"} · steps: {p.actions.join(", ")} · for {approvers(p)}
+                      {p.max_attempts != null
+                        ? ` · attempts: ${p.attempts_used ?? 0} of ${p.max_attempts} used (every account's, whoever approved them)`
+                        : p.what === "greenhouse_pilot" && " · no attempt limit"}
                     </p>
                     <blockquote className="mt-2 border-l-2 border-hairline-strong pl-3 text-ink-muted">“{p.words}”</blockquote>
                     {p.data && <p className="mt-1 text-xs text-ink-faint">Data: {p.data}</p>}

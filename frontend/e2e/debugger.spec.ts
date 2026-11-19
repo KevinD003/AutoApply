@@ -124,17 +124,27 @@ test("each recorded permission says whose approvals it covers", async ({ page },
     const response = await route.fetch();
     const json = await response.json();
     json.account = { ...json.account, owner: true };
-    json.permissions = [["owner"], ["rule"], ["owner", "rule"]].map((approvers) => ({ ...entry, approvers }));
+    json.permissions = [
+      ...[["owner"], ["rule"], ["owner", "rule"]].map((approvers) => ({ ...entry, approvers })),
+      // D173: one whose owner's words set no end date and no attempt limit.
+      { ...entry, decision: "D173", approvers: ["owner", "rule"], ends_on: null, max_attempts: null, attempts_used: null },
+    ];
     await route.fulfill({ response, json });
   });
   await page.goto("/debug");
   const rows = page.getByRole("list", { name: "Recorded permissions" }).getByRole("listitem");
-  await expect(rows).toHaveCount(3);
+  await expect(rows).toHaveCount(4);
   await expect(rows.nth(0)).toContainText("steps: disclose, open, read · for your own approvals, one at a time");
   await expect(rows.nth(1)).toContainText("for your standing rule's approvals");
   await expect(rows.nth(1)).not.toContainText("your own approvals");
   await expect(rows.nth(2)).toContainText("for your own approvals, one at a time and your standing rule's approvals");
   await expect(rows.nth(0)).toContainText("0 of 2 used (every account's, whoever approved them)");
+  await expect(rows.nth(0)).toContainText(", ends 2026-11-30");
+  await expect(rows.nth(0)).not.toContainText("no end date");
+  await expect(rows.nth(0)).not.toContainText("no attempt limit");
+  await expect(rows.nth(3)).toContainText("no end date (until you withdraw it)");
+  await expect(rows.nth(3)).toContainText("no attempt limit");
+  await expect(rows.nth(3)).not.toContainText("used (every account's");
   expect(await overflow(page)).toBeLessThanOrEqual(1);
 });
 

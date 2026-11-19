@@ -9,6 +9,20 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## The owner's permission of 2026-11-18, recorded (D173, 2026-11-19; local only)
+
+Nothing here ran against a real page or a real mailbox. Branch `owner-permission` (from main at
+ad43188). These tests read the shipped register; conftest empties it for every other test.
+
+| Claim | Test | Result |
+|---|---|---|
+| The register holds D173 as the owner's words set it: the four steps, from 2026-11-18, for both approvers, with no end date and no attempt limit. Its words quote the four answers | `test_authorizations.py` `test_the_shipped_register_holds_exactly_the_owners_recorded_words` | pass |
+| It covers every step for your own approvals, the rule's and either, from 2026-11-18 and years later, never the day before. No limit applies, and the inbox is not covered | `test_the_owners_permission_holds_only_on_its_days_and_never_inside_another_test` | pass |
+| D112 to D114 keep their days and their shared limit | `test_d172_the_shared_limit_counts_from_d112s_day_whoever_approves` | pass |
+| Its words are quoted in docs/decisions.md under D173 | `test_every_recorded_authorization_names_a_recorded_decision` | pass |
+| The console shows it active, with no end date and no attempt limit, and D112 to D114 and D117 as ended. It shows no warning that nothing real is read or sent, and keeps the mailbox warning | `test_debug_console.py` `test_the_shipped_permissions_are_shown_as_the_gates_read_them` | pass |
+| In the browser: a permission with no end date and no attempt limit says so; one with both says neither | `debugger.spec.ts` (desktop and mobile) | pass |
+
 ## Each recorded permission says whose approvals it covers (D172, 2026-11-18; local only)
 
 Nothing here ran against a real page or a real mailbox. Branch `approver-scope` (from main at

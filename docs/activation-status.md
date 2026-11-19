@@ -27,16 +27,16 @@ per scope you choose, for example "postings I approve in the app, one at a time,
 
 | Feature | Implemented | Tested locally | Consent configured | Operationally authorized | Tried for real |
 |---|---|---|---|---|---|
-| Greenhouse pilot, 1 read the job post | Yes | Yes (stand-in board and API) | Only on your machine (switch, owner, production) | **Yes, D112**: until 2026-11-06, at most 5 attempts | No (earlier read-only runs were a separate, approved check) |
-| Greenhouse pilot, 2 open the page | Yes | Yes | As above | **Yes, D112** (same entry) | No |
-| Greenhouse pilot, 3 disclose (the rehearsal) | Yes | Yes (receiver ledger) | As above | **Yes, D112** (same entry) | No |
-| Greenhouse pilot, 4 submit | Yes | Yes (receiver ledger) | As above | **Yes, D112** (same entry); only after that employer path's rehearsal held | No |
+| Greenhouse pilot, 1 read the job post | Yes | Yes (stand-in board and API) | Only on your machine (switch, owner, production) | **Yes, D173**: since 2026-11-18, for your own approvals and your standing rule's, no end date, no attempt limit (D112 ended on 2026-11-06) | No (earlier read-only runs were a separate, approved check) |
+| Greenhouse pilot, 2 open the page | Yes | Yes | As above | **Yes, D173** (same entry) | No |
+| Greenhouse pilot, 3 disclose (the rehearsal) | Yes | Yes (receiver ledger) | As above | **Yes, D173** (same entry) | No |
+| Greenhouse pilot, 4 submit | Yes | Yes (receiver ledger) | As above | **Yes, D173** (same entry); only after that employer path's rehearsal held | No |
 | Phone country, location search, late dropdowns (D104) | Yes | Yes, local stand-ins only | n/a | n/a | No; refused on a real page |
 | Pilot locale exception: path C's rule, fetch guard, redirect stop, 150-request cap (D110, D111) | Yes, on main | Yes (receiver log; both fetch modes) | Part of permission 2 (open): not recorded | Code change authorized 2026-11-01; use **No** | No |
 | Hidden search input in a question's group (D111) | Yes | Yes (fixture from run #11's one observation, receiver ledger) | n/a | n/a | No |
 | Milestone-B handoff on the application page (D111) | Yes | Yes (synthetic) | n/a: read-only | n/a | No |
 | Freehire discovery on by default; your search is its approval; daily re-check (D113) | Yes | Yes (stand-in) | On by default outside tests | Your choice, D113 | Earlier owner runs only |
-| Automatic applying, your standing rule (D113) | Yes | Yes (stand-in board, receiver ledger) | On by default; pause on the Tracker | **Yes, D113** (within D112's end date and 5-attempt limit) | No |
+| Automatic applying, your standing rule (D113) | Yes | Yes (stand-in board, receiver ledger) | On by default; pause on the Tracker | **Yes, D173** (D113's ended on 2026-11-06): no end date, no attempt limit; the rule's own daily cap still applies | No |
 | Review page: approve several packages (D105) | Yes | Yes | n/a: each approval is yours | n/a | No |
 | Read-only check, path B: the locale exception (`inspect_widgets_locales`, D106) | Yes | Yes: the v2 fixture's locale gate, the receiver's log | n/a: dispatched by hand | Approved once (D107) and **used** | Yes, once: run #10, a policy stop. No locale file was allowed (the real paths failed the rule), so it did not test the dropdowns' dependence on them (D107) |
 | Read-only check, path C: dropdown observation (`inspect_dropdowns`, D109) | Yes | Yes: hashed locale names, 404 outcomes, a container-only list, react-select markup | n/a: dispatched by hand | Approved once (D110) and **used** | Yes, once: run #11, completed. Both locale files loaded; 12 of 12 dropdowns opened at the control's click; the 7 mapped lists equal their job data (D110) |
@@ -45,8 +45,9 @@ per scope you choose, for example "postings I approve in the app, one at a time,
 
 ## 3 (first): the readiness checklist, computed
 
-Computed for the pilot adapter `greenhouse_live` on 2026-11-01: **1 of 7 met** (condition 6, by
-your recorded permission, D112, while it holds; 0 of 7 before it). The checklist is
+Computed for the pilot adapter `greenhouse_live` on 2026-11-19: **1 of 7 met** (condition 6, by
+your recorded permission, D173, while it holds). It was 1 of 7 under D112 too (2026-11-01 to
+2026-11-06), and 0 of 7 before it and after it ended. The checklist is
 the evidence for proposing the pilot more widely. Conditions 1-3 describe the one real posting
 observed so far. The run-time checks apply them to every posting: a posting without such a
 control is not blocked by them, but no condition is met by that.
@@ -56,12 +57,12 @@ control is not blocked by them, but no condition is met by that.
 | 1 | Each required dropdown opens through one bounded, tested strategy, with the complete list | The pilot's `custom_dropdowns` is fixture-only. Run #9 (600 ms, every data request refused) saw no list open. Run #10 (path B, 1.5 s) allowed no locale file, because the real paths failed the approved rule. So it did not test whether the lists wait on them; 6 of the 7 dropdowns it reached showed no opening evidence | Observation, then code | One rehearsal on a posting whose required dropdowns all have readable lists | Done: path C and run #11 (lists open once the locale files load; 7 mapped lists equal their job data); the react-select readback; the pilot's locale exception integrated with redirect detection and a request cap (D111) | Choose the posting; permissions 1-3; approve its rehearsal | `dropdowns.verify` before the disclosure gate: a list it cannot open, read completely and match exactly stops the attempt with nothing entered | `test_dropdown_strategies.py`, `test_pilot_readiness.py` |
 | 2 | The two required controls no question matches (run #11's `u1` in the phone group and `u3`; aliases are numbered per run) are understood and mapped by evidence | `u1`: its label and whether its options state calling codes were not recorded, and its react-select options exist only once opened. `u3`: no readable options, while a request to another Greenhouse host was refused. No rule maps them on a real page; D104's phone country rule is a local stand-in. D111: the page's hidden search input is not one of them | Observation (private), then code | `u1`: a private, in-app read of its label and options under permission 2 (a browser capture, not built yet). `u3`: none without new evidence | Built: the hidden-search rule and `u3` regressions (D111). Next: the browser capture for `u1` | Permission 2, once that capture exists | Capture refuses a required control the job data does not list (E3); one appearing later stops the attempt before disclosure | `test_greenhouse_dom.py`, `test_greenhouse_controls.py` |
 | 3 | A supported, evidence-backed way to set the location without writing hidden coordinates | No location control at load on the observed posting; D104's search is a local stand-in | Observation, consent, code | For a first rehearsal, choose a posting with no location question. For this posting, note how its location control appears (typing in it is a disclosure: permission 3) | After an observation: a mirroring fixture and a reviewed change letting D104's search run on that structure | Choice of posting; a Path A note | A location search on a real page stops the attempt before anything is entered; hidden coordinates are never written | `test_greenhouse_controls.py` |
-| 4 | Real upload evidence | It needs a disclosure-only rehearsal that uploaded to a real form and still holds. None can run: permissions 1-3 are not recorded, and the pilot runs nowhere | Consent, configuration, your machine | Record permissions 1-3; start the production configuration (§5); approve and watch one rehearsal (§6) | Nothing further in code; the rehearsal machinery and its counting exist | The permission, the start, the approval | The rehearsal stops before the send gate, which refuses a disclose-only approval | `test_rehearsal_stop.py`, `test_pilot_readiness.py` |
-| 5 | Real submission evidence | It needs a real final submit, confirmed, after a valid rehearsal on that path (E6). Permission 4 is not recorded | Consent, your machine | After the rehearsal holds: record permission 4, approve "Submit once" (§7) | Nothing further in code | Permission 4; the approval | The rehearsal prerequisite at approval, queueing and both gates; the send gate needs permission 4; no retry after the final click | `test_rehearsal_prerequisite.py`, `test_greenhouse_live.py` |
-| 6 | Your separate, recorded permission for each step; the posting named by your approval of its package | **Met (D112)**: all four steps, until 2026-11-06, at most 5 attempts past the disclosure gate. It lapses on its own after that day or at the fifth attempt | Consent | Renew in writing when it lapses | Done: your words recorded with the decision and its tests; the limit enforced at the disclosure gate | Approve each package in the app | `live.permission_refusal` at capture, routing, queueing, before the page opens and at both gates; the attempt limit at the disclosure gate | `test_greenhouse_live.py`, `test_authorizations.py` |
+| 4 | Real upload evidence | It needs a disclosure-only rehearsal that uploaded to a real form and still holds. None has run: permissions 1-3 are recorded (D173), and the pilot runs only on your machine | Configuration, your machine | Start the production configuration (§5); approve and watch one rehearsal (§6) | Nothing further in code; the rehearsal machinery and its counting exist | The start, the approval | The rehearsal stops before the send gate, which refuses a disclose-only approval | `test_rehearsal_stop.py`, `test_pilot_readiness.py` |
+| 5 | Real submission evidence | It needs a real final submit, confirmed, after a valid rehearsal on that path (E6). Permission 4 is recorded (D173); no rehearsal has held yet | Your machine | After the rehearsal holds: approve "Submit once" (§7) | Nothing further in code | The approval | The rehearsal prerequisite at approval, queueing and both gates; the send gate needs permission 4; no retry after the final click | `test_rehearsal_prerequisite.py`, `test_greenhouse_live.py` |
+| 6 | Your separate, recorded permission for each step; the posting named by your approval of its package | **Met (D173)**: all four steps, for your own approvals and your standing rule's, since 2026-11-18, with no end date and no attempt limit: it holds until you withdraw it (§8). D112's (until 2026-11-06, at most 5 attempts) ended | Consent | None while it holds; to end it, withdraw it in writing (§8) | Done: your words recorded with the decision and its tests | Approve each package in the app, or let your standing rule approve it | `live.permission_refusal` at capture, routing, queueing, before the page opens and at both gates; an attempt limit at the disclosure gate where an entry sets one (D173 sets none) | `test_greenhouse_live.py`, `test_authorizations.py` |
 | 7 | Capabilities raised from fixture to observed, with a reviewed real-destination change | Part 1 is done: the pilot's reviewed real-destination entry (D102). Part 2 is not: `deterministic_fill`, `custom_dropdowns`, `file_upload`, `final_submit` and `confirmation_detection` are still at fixture | Code, after evidence | After evidence that the dropdowns open, the first rehearsal and the first submission: a reviewed change raising exactly what has evidence | That change and its tests, never before the evidence | Nothing beyond the evidence steps | Registry levels and `policy.CAPABILITIES`; `model.PILOTS` allows real destinations to the pilot alone | `test_pilot_readiness.py`, `test_provider_contracts.py` |
 
-**Order:** 6 (permissions 1-3) → §5 → 4 (one rehearsal) → 6 (permission 4) → 5 (one
+**Order:** 6 (all four permissions: recorded, D173) → §5 → 4 (one rehearsal) → 5 (one
 submission) → 7. Conditions 1-3 run in parallel through run C (D109; run B was used by run #10), or
 are avoided for a first posting that has no such controls.
 
@@ -178,12 +179,14 @@ What happens with it:
   valid. It prints key names only, never a value.
 - **Start:** `docker compose -f docker-compose.yml -f docker-compose.pilot.yml up -d`, then the
   health check (`docs/deployment.md` §4).
-- **Your permission is recorded (D112)** until 2026-11-06, for at most 5 attempts. The
-  application's page shows "Attempts left". After that date, or at the limit, the job's route
-  says `live_not_authorized` or the attempt stops with `live_limit_reached`, and nothing more is
-  read or sent until you renew it in writing.
+- **Your permission is recorded (D173)** since 2026-11-18: all four steps, for your own
+  approvals and your standing rule's, with no end date and no attempt limit. It holds until you
+  withdraw it (§8). Your standing rule still applies at most `NOEFFORTS_AUTO_APPLY_DAILY_CAP`
+  a day (5 by default), and each package still needs its approval. D112's permission (until
+  2026-11-06, at most 5 attempts) ended. While no permission holds, the job's route says
+  `live_not_authorized` and nothing is read or sent.
 
-## 6. Disclosure-only rehearsal plan (permissions 1-3 recorded, D112)
+## 6. Disclosure-only rehearsal plan (permissions 1-3 recorded, D173)
 
 1. Choose a posting:
    - on `job-boards.greenhouse.io` or `boards.greenhouse.io`;
@@ -205,9 +208,11 @@ What happens with it:
    application: nothing is submitted until permission 4 is recorded for its approvals, and
    the Tracker's card and each such application say so (D171). Once it is, it submits them
    by itself; pause it first if it must not. Permission 4 recorded for your own approvals
-   only lets you submit, one application at a time, and never lets the rule.
+   only lets you submit, one application at a time, and never lets the rule. Under D173 all
+   four steps are recorded for its approvals: it rehearses each new employer's path first, then
+   submits by itself, at most its daily cap a day, until you pause it on the Tracker's card.
 
-## 7. Separately authorized submission plan (permission 4 recorded, D112; needs a rehearsal that holds)
+## 7. Separately authorized submission plan (permission 4 recorded, D173; needs a rehearsal that holds)
 
 1. Approve **"Submit once"** for the same application, a new approval.
 2. Queue it. It re-checks everything, fills again, and passes the send gate (step 4: recorded
