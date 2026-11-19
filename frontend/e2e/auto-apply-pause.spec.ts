@@ -44,7 +44,9 @@ test("pausing the rule says what it stopped of the work it had queued", async ({
 });
 
 // D171: with a recorded permission for rehearsals only, the card says the rule submits nothing.
-// The server's state is altered in the browser only (no permission is recorded in tests).
+// The server's state is altered in the browser only, every field the card reads about the recorded
+// permission included: the test server reads the shipped register, which holds the owner's own
+// permission since D173, so its own answer would depend on what the owner recorded.
 test("a permission for rehearsals only is said on the card", async ({ page }, info) => {
   const email = `d171.${info.project.name}.${Date.now()}@example.com`;
   const reg = await page.request.post("/api/auth/register", { data: { email, password: "synthetic-password-1" } });
@@ -54,7 +56,7 @@ test("a permission for rehearsals only is said on the card", async ({ page }, in
     await page.route("**/api/auto-apply", async (route) => {
       if (route.request().method() !== "GET") return route.fallback();
       const response = await route.fetch();
-      const json = { ...(await response.json()), active: true, paused: false, unavailable: null, submits, ...more };
+      const json = { ...(await response.json()), active: true, paused: false, unavailable: null, submits, submits_yours: false, ...more };
       await route.fulfill({ response, json });
     });
     await page.goto("/tracker");

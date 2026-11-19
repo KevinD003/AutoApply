@@ -84,6 +84,7 @@ runs both). The checks below, ruff, tsc and eslint were run.
 | The console's browser spec | `debugger.spec.ts` (desktop and mobile) | 6 passed |
 | Its two new phrases removed in turn | the spec's permission test (desktop and mobile) | each caught on its own assertion (2 failures each) |
 | Readiness, computed against the shipped register on 2026-11-19 | `readiness.summary()` | 1 of 7: condition 6 (`pilot_gate`) met |
+| PR CI (#82) on fb1603a, the frontend job | the full e2e suite | 198 passed, 2 failed, 3 skipped. `auto-apply-pause.spec.ts` (desktop and mobile) left the card's `submits_yours` to the test server, which computes it from the shipped register, pilot switched on or not: under D173 your own approvals may submit, so the card said your own "Submit once" is still sent where the test expects nothing. Reproduced locally (2 failed, 2 passed); the test now sets that field as it sets the others (4 passed). docker-smoke and execution-compose passed |
 | Lint and types | `ruff check .`, `ruff format --check .`, `npx tsc --noEmit`, `npm run lint` | clean |
 
 ## Each recorded permission says whose approvals it covers (D172, 2026-11-18; local only)

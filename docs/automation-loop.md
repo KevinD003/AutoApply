@@ -1398,6 +1398,7 @@ action.
 | D173, the entry's parts changed in turn | 7 changes (an end date, a limit, yours only, the rule's only, a later start, no submit, one answer left out) | each caught |
 | D173, the suites that read the changed docs, with the touched ones | seven files (JUnit) | exit 0; 352 passed |
 | D173, the console's browser spec; its two new phrases removed in turn | `debugger.spec.ts` (desktop and mobile) | 6 passed; each removal caught on its own assertion |
+| D173, its PR's CI (#82) on fb1603a | the four jobs | frontend: 2 failed (`auto-apply-pause.spec.ts`: the card's `submits_yours` came from the test server's shipped register, now holding D173); reproduced locally, the test now sets it (4 passed); docker-smoke and execution-compose passed |
 
 ## Failed approaches and rejected designs
 
